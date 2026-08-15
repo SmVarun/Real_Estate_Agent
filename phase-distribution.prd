@@ -1,0 +1,1259 @@
+# AI Sales CRM + RAG Agent
+
+## Phase-Wise Development & Implementation Plan
+
+### 1. Project Overview
+
+The platform will combine three major systems:
+
+1. **CRM Dashboard**
+
+   * Authentication and user management
+   * Salesperson management
+   * Lead management
+   * Assignment of high-interest leads
+   * Company/product information management
+
+2. **RAG-Based AI Agent**
+
+   * Company/business/product knowledge ingestion
+   * Document processing
+   * Chunking and embedding
+   * Vector storage
+   * Context retrieval
+   * LLM-based response generation
+
+3. **Chat Interface**
+
+   * Initial dummy/internal chat interface for MVP
+   * Communication with the RAG agent through the backend
+   * Future WhatsApp integration
+   * Real-time communication using Socket.IO where required
+
+---
+
+# 2. Proposed Technology Stack
+
+## Frontend
+
+* React
+* Tailwind CSS v4
+* Lucide Icons
+* REST API integration
+* Socket.IO client where real-time communication is required
+
+## Backend
+
+* Node.js
+* Express.js
+* REST APIs
+* JWT authentication
+* Socket.IO
+* Cloudinary for image/file-related storage where appropriate
+
+## RAG / AI Layer
+
+* JavaScript / Node.js
+* LangChain.js
+* ChromaDB
+* Hugging Face embeddings
+* LLM provider/local LLM to be finalized during implementation
+
+## Database
+
+A relational/application database should be used for:
+
+* Users
+* Salespersons
+* Leads
+* Lead assignments
+* Authentication/session metadata
+* Uploaded document metadata
+* CRM-related information
+
+ChromaDB should be treated specifically as the **vector database for RAG**, not as the primary CRM database.
+
+---
+
+# 3. High-Level Architecture
+
+```text
+                    ┌──────────────────────┐
+                    │      React UI        │
+                    │  CRM + Chat + Admin  │
+                    └──────────┬───────────┘
+                               │
+                     REST / Socket.IO
+                               │
+                    ┌──────────▼───────────┐
+                    │   Node.js / Express  │
+                    │      API Server      │
+                    └──────┬─────────┬─────┘
+                           │         │
+                ┌──────────▼───┐   ┌─▼─────────────┐
+                │ CRM Database │   │ RAG Service   │
+                │              │   │ LangChain.js  │
+                └──────────────┘   └──────┬────────┘
+                                          │
+                                  ┌───────▼────────┐
+                                  │    ChromaDB    │
+                                  │ Vector Storage │
+                                  └───────┬────────┘
+                                          │
+                                  ┌───────▼────────┐
+                                  │ Embedding Model│
+                                  │ Hugging Face   │
+                                  └────────────────┘
+```
+
+The backend should act as the primary gateway between the frontend and AI layer.
+
+The frontend should **not directly communicate with ChromaDB or the LLM**.
+
+---
+
+# 4. Development Strategy
+
+The development should follow this order:
+
+```text
+Foundation
+    ↓
+Authentication
+    ↓
+CRM
+    ↓
+Document/Data Ingestion
+    ↓
+RAG Pipeline
+    ↓
+AI Agent API
+    ↓
+Chat Interface
+    ↓
+CRM + AI Integration
+    ↓
+WhatsApp / External Channels
+```
+
+This order minimizes integration risk.
+
+The most important principle is:
+
+> First make the RAG agent work independently, then connect it to the CRM, and only after that connect external messaging channels.
+
+---
+
+# PHASE 0 — Project Planning & Architecture
+
+## Objective
+
+Finalize the technical architecture and define the boundaries between the CRM, backend, RAG system and chat layer.
+
+## Tasks
+
+* Finalize frontend architecture
+* Finalize backend architecture
+* Define database schema
+* Define API conventions
+* Define authentication strategy
+* Define RAG pipeline
+* Define document ingestion workflow
+* Define user roles
+* Define lead lifecycle
+* Define chat message structure
+* Define RAG response structure
+* Decide LLM provider
+* Decide whether RAG runs inside the Express application or as a separate service/module
+
+## Deliverables
+
+* System architecture
+* Database ER/schema design
+* API specification
+* RAG architecture
+* Folder structure
+* Environment variable specification
+* Development standards
+
+## Completion Criteria
+
+The entire team should understand:
+
+* What the frontend does
+* What the Express server does
+* What the RAG system does
+* What ChromaDB stores
+* What the primary database stores
+* How data flows from user → backend → RAG → response
+
+---
+
+# PHASE 1 — Backend & Authentication Foundation
+
+## Objective
+
+Build the secure backend foundation before implementing CRM and AI functionality.
+
+## Authentication Features
+
+### Registration
+
+```text
+User
+ ↓
+Register
+ ↓
+Validate input
+ ↓
+Hash password
+ ↓
+Create user
+ ↓
+Return account/session information
+```
+
+### Login
+
+* Email/username validation
+* Password verification
+* JWT generation
+* Refresh/session strategy if required
+
+### Forgot Password
+
+* Password reset request
+* Secure reset token
+* Password update
+
+### Two-Factor Authentication
+
+Implement 2FA after basic authentication is stable.
+
+Possible flow:
+
+```text
+Login
+ ↓
+Credentials valid
+ ↓
+2FA required?
+ ↓
+OTP / authenticator verification
+ ↓
+JWT/session issued
+```
+
+## Backend Tasks
+
+* Express server
+* Environment configuration
+* Database connection
+* Authentication middleware
+* JWT middleware
+* Password hashing
+* Request validation
+* Error handling
+* API response standardization
+* Logging
+* Security middleware
+* CORS configuration
+
+## Deliverables
+
+* Running backend
+* Auth APIs
+* JWT middleware
+* Protected routes
+* User model
+* Authentication documentation
+
+## Completion Criteria
+
+A user can:
+
+* Register
+* Login
+* Logout
+* Reset password
+* Access protected APIs
+* Complete 2FA if enabled
+
+---
+
+# PHASE 2 — CRM Dashboard
+
+## Objective
+
+Build the business management layer of the platform.
+
+The dashboard should become the central visibility layer for the company.
+
+## 2.1 Salesperson Management
+
+Store:
+
+* Name
+* Email
+* Phone
+* Role
+* Status
+* Assigned leads
+* Created date
+* Additional business metadata
+
+## 2.2 Lead Management
+
+A lead should contain information such as:
+
+* Name
+* Contact information
+* Property/product of interest
+* Interest level
+* Lead source
+* Assigned salesperson
+* Status
+* Notes
+* Last interaction
+* Created date
+* Updated date
+
+## Lead Status
+
+Recommended initial lifecycle:
+
+```text
+NEW
+ ↓
+CONTACTED
+ ↓
+INTERESTED
+ ↓
+HIGHLY_INTERESTED
+ ↓
+QUALIFIED
+ ↓
+CONVERTED
+```
+
+Alternative outcomes:
+
+```text
+NOT_INTERESTED
+LOST
+```
+
+## 2.3 High-Interest Lead Assignment
+
+The system should identify leads that require salesperson attention.
+
+Example:
+
+```text
+Lead becomes highly interested
+          ↓
+CRM detects status
+          ↓
+Assignment required
+          ↓
+Salesperson assigned
+          ↓
+Dashboard updated
+```
+
+Initially, assignment can be manual.
+
+Automatic assignment can be introduced later.
+
+## 2.4 Dashboard
+
+The dashboard should expose:
+
+* Total leads
+* New leads
+* Interested leads
+* Highly interested leads
+* Converted leads
+* Salesperson count
+* Assigned/unassigned leads
+* Recent activity
+* Lead distribution
+
+## Deliverables
+
+* CRM dashboard
+* Salesperson CRUD
+* Lead CRUD
+* Lead assignment
+* Lead status management
+* Dashboard analytics
+
+## Completion Criteria
+
+A company administrator can manage salespeople and leads completely without interacting with the AI system.
+
+---
+
+# PHASE 3 — Company & Product Knowledge Management
+
+## Objective
+
+Create the system through which company information becomes available to the RAG agent.
+
+This is a critical phase because the quality of the AI agent depends heavily on the quality of its knowledge base.
+
+## Information Types
+
+The platform should support information such as:
+
+### Company
+
+* Company overview
+* Business model
+* Services
+* Policies
+* Contact information
+* FAQs
+
+### Product
+
+* Product description
+* Features
+* Pricing
+* Specifications
+* Benefits
+* Limitations
+* FAQs
+
+### Business/Sales Information
+
+* Sales guidelines
+* Product comparison
+* Customer qualification rules
+* Common objections
+* Sales scripts
+* Policies
+
+## Document Upload
+
+Initial MVP:
+
+* PDF upload
+* Text extraction
+* Metadata storage
+
+Future:
+
+* DOCX
+* TXT
+* Web pages
+* Knowledge-base URLs
+* Structured JSON/CSV
+
+## Important Architecture Decision
+
+The uploaded file should **not simply be stored and passed directly to the LLM**.
+
+The correct flow is:
+
+```text
+Upload
+ ↓
+Store original document
+ ↓
+Extract text
+ ↓
+Clean text
+ ↓
+Split into chunks
+ ↓
+Generate embeddings
+ ↓
+Store vectors in ChromaDB
+ ↓
+Store document metadata
+```
+
+## Deliverables
+
+* Document upload API
+* Document metadata model
+* PDF processing
+* Text extraction
+* Document status tracking
+* Ingestion pipeline
+
+---
+
+# PHASE 4 — RAG Pipeline
+
+## Objective
+
+Build the actual retrieval-augmented generation system.
+
+This is the core AI phase.
+
+## 4.1 Document Processing
+
+```text
+PDF
+ ↓
+Text Extraction
+ ↓
+Cleaning
+ ↓
+Document Object
+ ↓
+Chunking
+```
+
+## 4.2 Chunking
+
+Documents should be divided into meaningful chunks.
+
+Example:
+
+```text
+Company PDF
+      ↓
+ ┌────┴────┐
+Chunk 1
+Chunk 2
+Chunk 3
+Chunk 4
+...
+```
+
+Chunk size and overlap should be tested rather than blindly fixed.
+
+## 4.3 Embeddings
+
+Each chunk is converted into an embedding.
+
+```text
+Text Chunk
+    ↓
+Hugging Face Embedding Model
+    ↓
+Vector
+```
+
+## 4.4 Vector Storage
+
+Store the embeddings in ChromaDB along with metadata.
+
+Example metadata:
+
+```text
+document_id
+company_id
+document_type
+page_number
+source
+chunk_id
+```
+
+This metadata becomes extremely important when the system grows.
+
+## 4.5 Retrieval
+
+When a user asks:
+
+> What are the features of Product X?
+
+The system performs:
+
+```text
+User Question
+      ↓
+Question Embedding
+      ↓
+Similarity Search
+      ↓
+Top Relevant Chunks
+```
+
+## 4.6 Generation
+
+The retrieved context is passed to the LLM.
+
+```text
+User Question
+      +
+Retrieved Context
+      ↓
+Prompt
+      ↓
+LLM
+      ↓
+Final Answer
+```
+
+## 4.7 Hallucination Control
+
+The agent should be instructed to:
+
+* Use retrieved knowledge
+* Avoid inventing company information
+* Clearly state when information is unavailable
+* Prefer company knowledge over generic assumptions
+
+## Deliverables
+
+* LangChain.js pipeline
+* Embedding integration
+* ChromaDB integration
+* Chunking system
+* Retrieval system
+* Prompt templates
+* RAG response generation
+* Source/document references
+
+## Completion Criteria
+
+A standalone API should be able to answer questions from an uploaded company PDF.
+
+---
+
+# PHASE 5 — RAG Agent API
+
+## Objective
+
+Convert the RAG pipeline into a production-consumable backend service.
+
+The frontend should communicate with the RAG system through the Express backend.
+
+## Recommended API Flow
+
+```text
+POST /api/chat
+```
+
+Request:
+
+```text
+{
+    conversationId,
+    message
+}
+```
+
+Backend:
+
+```text
+Request
+ ↓
+Authentication
+ ↓
+Identify company/user
+ ↓
+Send question to RAG
+ ↓
+Retrieve relevant context
+ ↓
+Generate answer
+ ↓
+Return response
+```
+
+## Response
+
+The response should ideally contain:
+
+```text
+{
+    answer,
+    conversationId,
+    sources,
+    confidence/metadata
+}
+```
+
+The exact response structure can be refined during implementation.
+
+## Multi-Tenant Consideration
+
+If multiple companies will use this platform, **company isolation must be designed from the beginning**.
+
+For example:
+
+```text
+Company A
+ ├── Documents
+ ├── Vectors
+ └── Leads
+
+Company B
+ ├── Documents
+ ├── Vectors
+ └── Leads
+```
+
+A query from Company A must never retrieve Company B's documents.
+
+This should be enforced at the retrieval layer, not only at the UI layer.
+
+---
+
+# PHASE 6 — Chat Interface
+
+## Objective
+
+Create the first usable interface for interacting with the AI agent.
+
+Because WhatsApp API integration can introduce external approval, configuration and business-account dependencies, the MVP should use an internal chat interface first.
+
+## Chat UI
+
+The interface should include:
+
+* Conversation list
+* New conversation
+* Message history
+* User messages
+* AI responses
+* Loading state
+* Error state
+* Source references
+* Message timestamps
+
+## Flow
+
+```text
+User
+ ↓
+Chat UI
+ ↓
+Express API
+ ↓
+RAG Agent
+ ↓
+ChromaDB
+ ↓
+LLM
+ ↓
+Response
+ ↓
+Chat UI
+```
+
+## Real-Time Messaging
+
+Socket.IO can be introduced for:
+
+* Message status
+* Streaming-like UI updates
+* Agent processing state
+* Live CRM updates
+* Notifications
+
+However, **REST should remain sufficient for the first request/response MVP**.
+
+Do not introduce Socket.IO into every part of the system just because it is available.
+
+## Deliverables
+
+* Functional chat UI
+* Chat API
+* Conversation management
+* Message persistence
+* RAG response integration
+* Loading/error states
+
+---
+
+# PHASE 7 — CRM + AI Integration
+
+## Objective
+
+Connect the AI agent with the CRM so the system becomes an actual sales platform rather than simply a chatbot.
+
+## Potential Flow
+
+```text
+Customer/User
+      ↓
+AI Chat
+      ↓
+Conversation
+      ↓
+AI detects intent/interest
+      ↓
+Lead created/updated
+      ↓
+CRM
+      ↓
+Salesperson assigned
+```
+
+## AI-Assisted Lead Detection
+
+The agent can identify signals such as:
+
+* Product inquiry
+* Pricing inquiry
+* High purchase intent
+* Request for callback
+* Request for salesperson
+* Product comparison
+* Objection
+* Follow-up requirement
+
+For example:
+
+```text
+User:
+"I want to buy this property. Can someone contact me?"
+
+        ↓
+
+AI detects:
+Intent = Purchase
+Interest = HIGH
+Callback = REQUIRED
+
+        ↓
+
+CRM Lead Update
+```
+
+## Important Implementation Strategy
+
+Do not allow the LLM to directly modify the database.
+
+Instead:
+
+```text
+LLM
+ ↓
+Structured Intent / Tool Request
+ ↓
+Backend Validation
+ ↓
+CRM Service
+ ↓
+Database
+```
+
+This creates a safer and more predictable system.
+
+## Deliverables
+
+* AI → CRM event structure
+* Lead detection
+* Lead creation/update
+* Interest classification
+* Salesperson assignment workflow
+* Conversation-to-lead linking
+
+---
+
+# PHASE 8 — WhatsApp Integration
+
+## Objective
+
+Move from the internal chat MVP to a real customer communication channel.
+
+WhatsApp should be implemented **after the internal chat + RAG + CRM workflow is stable**.
+
+## Proposed Flow
+
+```text
+Customer
+   ↓
+WhatsApp
+   ↓
+WhatsApp Business API
+   ↓
+Webhook
+   ↓
+Node.js Backend
+   ↓
+RAG Agent
+   ↓
+Response
+   ↓
+WhatsApp API
+   ↓
+Customer
+```
+
+## Backend Responsibilities
+
+The backend should handle:
+
+* Incoming webhook
+* Message validation
+* User/customer identification
+* Conversation creation
+* RAG query
+* AI response
+* Outgoing WhatsApp message
+* Message persistence
+* Delivery status
+* Error handling
+
+## CRM Integration
+
+A WhatsApp conversation should be linkable to:
+
+```text
+Customer
+   ↓
+Conversation
+   ↓
+Lead
+   ↓
+Salesperson
+```
+
+## Deliverables
+
+* WhatsApp Business API integration
+* Webhook handling
+* Incoming messages
+* Outgoing messages
+* Conversation persistence
+* CRM linkage
+* Error/retry handling
+
+---
+
+# PHASE 9 — Testing, Security & Production Readiness
+
+This phase should run partly in parallel with development but must have a dedicated final hardening cycle.
+
+## Backend Testing
+
+Test:
+
+* Authentication
+* Authorization
+* Lead CRUD
+* Salesperson CRUD
+* Document upload
+* RAG ingestion
+* Retrieval
+* Chat
+* CRM updates
+* Webhooks
+
+## RAG Evaluation
+
+Create a test dataset:
+
+```text
+Question
+Expected Answer
+Retrieved Context
+Actual Answer
+```
+
+Evaluate:
+
+* Retrieval accuracy
+* Relevant chunk selection
+* Hallucination rate
+* Answer correctness
+* Response latency
+
+## Security
+
+Implement:
+
+* JWT security
+* Password hashing
+* Rate limiting
+* Input validation
+* File validation
+* File size limits
+* CORS restrictions
+* Secure environment variables
+* API authorization
+* Tenant isolation
+* Webhook verification
+
+## Production Monitoring
+
+Monitor:
+
+* API errors
+* RAG failures
+* LLM failures
+* Retrieval latency
+* Chat latency
+* Document ingestion failures
+* Token/API usage
+* Database errors
+
+---
+
+# 10. Recommended MVP Scope
+
+The first production-like MVP should **not attempt to implement everything**.
+
+### MVP should contain
+
+```text
+Authentication
+        +
+CRM Dashboard
+        +
+Salesperson Management
+        +
+Lead Management
+        +
+PDF Upload
+        +
+RAG Ingestion
+        +
+ChromaDB
+        +
+Hugging Face Embeddings
+        +
+LLM
+        +
+Internal Chat
+        +
+CRM/RAG Integration
+```
+
+### Keep for Post-MVP
+
+```text
+WhatsApp
+Automatic lead assignment
+Advanced analytics
+AI-based lead scoring
+Advanced conversation intelligence
+Multiple external messaging channels
+Advanced automation
+```
+
+This significantly reduces the initial integration risk.
+
+---
+
+# 11. Suggested Development Milestones
+
+## Milestone 1 — Foundation
+
+**Output:**
+
+Working React + Express application with database and authentication.
+
+---
+
+## Milestone 2 — CRM
+
+**Output:**
+
+Company can manage salespeople and leads.
+
+---
+
+## Milestone 3 — Knowledge Base
+
+**Output:**
+
+Company can upload PDFs and process them into the RAG knowledge base.
+
+---
+
+## Milestone 4 — RAG
+
+**Output:**
+
+A standalone API can answer questions based on company documents.
+
+---
+
+## Milestone 5 — AI Chat
+
+**Output:**
+
+Users can communicate with the RAG agent through the web application.
+
+---
+
+## Milestone 6 — AI + CRM
+
+**Output:**
+
+AI conversations can create/update leads and identify high-interest customers.
+
+---
+
+## Milestone 7 — Production Hardening
+
+**Output:**
+
+System is tested, secured and prepared for real users.
+
+---
+
+## Milestone 8 — WhatsApp
+
+**Output:**
+
+Customers can interact with the same AI agent through WhatsApp.
+
+---
+
+# 12. Final End-to-End Product Flow
+
+The final system should work approximately like this:
+
+```text
+                    COMPANY ADMIN
+                         │
+                         ▼
+                 ┌───────────────┐
+                 │ CRM Dashboard │
+                 └───────┬───────┘
+                         │
+             Upload Company/Product Data
+                         │
+                         ▼
+                 ┌───────────────┐
+                 │ RAG Ingestion │
+                 └───────┬───────┘
+                         │
+                Extract → Chunk
+                         │
+                    Embeddings
+                         │
+                         ▼
+                    ChromaDB
+                         │
+                         │
+                         ▼
+CUSTOMER ───────► CHAT / WHATSAPP
+                         │
+                         ▼
+                   Express API
+                         │
+                         ▼
+                    RAG Agent
+                         │
+                  Retrieve Context
+                         │
+                         ▼
+                       LLM
+                         │
+                         ▼
+                  AI Response
+                         │
+             ┌───────────┴───────────┐
+             │                       │
+             ▼                       ▼
+        Customer Response       CRM Intelligence
+                                     │
+                                     ▼
+                                  Lead
+                                     │
+                              Interest Detection
+                                     │
+                                     ▼
+                              Salesperson
+                                     │
+                                     ▼
+                               Follow-up
+```
+
+# 13. Key Architectural Principles
+
+### Principle 1 — Separate CRM Data and Vector Data
+
+The primary database should manage business entities.
+
+ChromaDB should manage embeddings and retrieval.
+
+Do not use ChromaDB as the CRM database.
+
+### Principle 2 — Backend Is the Gateway
+
+React should communicate with Express.
+
+Express should communicate with:
+
+* Database
+* RAG layer
+* Cloudinary
+* Socket.IO
+* WhatsApp API
+
+### Principle 3 — RAG Must Be Company-Aware
+
+Every document/vector should be associated with the correct company/tenant.
+
+### Principle 4 — AI Should Not Directly Control the Database
+
+Use structured AI outputs/tools and backend validation before CRM mutations.
+
+### Principle 5 — Build Internal Chat Before WhatsApp
+
+This allows the complete AI workflow to be tested without external messaging API complexity.
+
+### Principle 6 — Measure RAG Quality
+
+A working chatbot is not automatically a good RAG system.
+
+Retrieval quality and answer correctness should be evaluated with test questions before production deployment.
+
+---
+
+# 14. Final Development Sequence
+
+```text
+PHASE 0
+Architecture & Planning
+        ↓
+PHASE 1
+Backend + Authentication
+        ↓
+PHASE 2
+CRM Dashboard
+        ↓
+PHASE 3
+Company/Product Knowledge
+        ↓
+PHASE 4
+RAG Pipeline
+        ↓
+PHASE 5
+RAG Agent API
+        ↓
+PHASE 6
+Internal Chat
+        ↓
+PHASE 7
+CRM + AI Integration
+        ↓
+PHASE 8
+WhatsApp Integration
+        ↓
+PHASE 9
+Testing + Security + Production
+```
+
+## Definition of Done
+
+The project can be considered ready for its first real deployment when:
+
+* Authentication is secure
+* CRM workflows are functional
+* Company documents can be uploaded
+* Documents are correctly indexed
+* RAG retrieves relevant information
+* AI responses are grounded in company data
+* Conversations are persisted
+* Leads can be created/updated
+* High-interest leads can reach salespeople
+* Tenant/company data is isolated
+* APIs are authenticated and validated
+* Errors are handled
+* RAG quality has been evaluated
+* The system can be monitored in production
+
+The **WhatsApp integration should be considered a channel expansion**, not the foundation of the product. The real core product is the combination of **CRM + company knowledge base + RAG agent + conversation intelligence**.

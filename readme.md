@@ -1,911 +1,829 @@
-🔄 End-to-End RAG Data Flow
-                COMPANY / ADMIN
-                      │
-                      │ Upload PDF
-                      ▼
-             ┌──────────────────┐
-             │ Document Upload  │
-             └────────┬─────────┘
-                      │
-                      ▼
-             ┌──────────────────┐
-             │ Text Extraction  │
-             └────────┬─────────┘
-                      │
-                      ▼
-             ┌──────────────────┐
-             │ Text Cleaning    │
-             └────────┬─────────┘
-                      │
-                      ▼
-             ┌──────────────────┐
-             │     Chunking     │
-             └────────┬─────────┘
-                      │
-                      ▼
-             ┌──────────────────┐
-             │ Hugging Face     │
-             │   Embeddings     │
-             └────────┬─────────┘
-                      │
-                      ▼
-             ┌──────────────────┐
-             │    ChromaDB      │
-             │ Vector Storage   │
-             └────────┬─────────┘
-                      │
-                      │ Retrieval
-                      ▼
-USER ─────────► QUESTION
-                      │
-                      ▼
-             ┌──────────────────┐
-             │ Query Embedding  │
-             └────────┬─────────┘
-                      │
-                      ▼
-             ┌──────────────────┐
-             │ Similarity Search│
-             └────────┬─────────┘
-                      │
-                      ▼
-             ┌──────────────────┐
-             │ Relevant Chunks  │
-             └────────┬─────────┘
-                      │
-                      ▼
-             ┌──────────────────┐
-             │      LLM         │
-             │ Context + Prompt │
-             └────────┬─────────┘
-                      │
-                      ▼
-                AI RESPONSE
-🛠️ Technology Stack
-🖥️ Frontend
-Technology	Purpose
-⚛️ React	UI framework
-🎨 Tailwind CSS v4	Styling and responsive UI
-✨ Lucide Icons	Interface icons
-🌐 REST API	Backend communication
-🔌 Socket.IO Client	Future real-time features
-Technology icons
-⚛️ React
-🎨 Tailwind CSS
-✨ Lucide
-⚙️ Backend
-Technology	Purpose
-🟢 Node.js	JavaScript runtime
-🚂 Express.js	REST API framework
-☁️ Cloudinary	Image/file asset storage where required
-🔌 Socket.IO	Real-time communication
-🔐 JWT	Authentication
-🔒 bcrypt	Password hashing
+# AI Sales CRM
 
-The design explicitly specifies Node.js, Express, Cloudinary for image storage and Socket.IO for real-time messaging. fileciteturn0file0L904-L910
+> An AI-powered, multi-tenant Sales CRM designed to centralize customer data, automate sales workflows, provide intelligent conversations, and enable context-aware AI assistance through RAG.
 
-Technology icons
-🟢 Node.js
-🚂 Express.js
-☁️ Cloudinary
-🔌 Socket.IO
-🔐 JWT
-🧠 RAG / AI
-Technology	Purpose
-🟨 JavaScript	RAG implementation language
-🦜 LangChain.js	RAG orchestration
-🗄️ ChromaDB	Vector database
-🤗 Hugging Face Embeddings	Text embeddings
-🧠 LLM	Final response generation
+---
 
-The source architecture explicitly calls for JavaScript + LangChain, ChromaDB and Hugging Face embeddings. fileciteturn0file0L269-L275
+## 📌 Overview
 
-Technology icons
-🟨 JavaScript
-🦜 LangChain
-🗄️ ChromaDB
-🤗 Hugging Face
-🧠 LLM
-🗂️ Recommended MVP Repository Structure
+**AI Sales CRM** is a production-oriented CRM platform built around a modular architecture.
+
+The system combines:
+
+* Customer & company management
+* Lead and sales pipeline management
+* AI-powered sales assistance
+* Context-aware conversations
+* RAG-based knowledge retrieval
+* Real-time communication
+* Multi-tenant data isolation
+* Authentication and authorization
+* Document ingestion and processing
+* Sales analytics and activity tracking
+
+The project is being developed incrementally, starting with a stable **MVP** and evolving toward a complete AI-native CRM platform.
+
+---
+
+# 🎯 Project Goals
+
+The primary goals are:
+
+1. Build a reliable CRM foundation.
+2. Support multiple companies/tenants.
+3. Keep customer data isolated between tenants.
+4. Introduce AI without coupling the entire application to an LLM.
+5. Build an independent RAG pipeline.
+6. Support real-time CRM interactions.
+7. Maintain clean service boundaries.
+8. Make the system scalable and production-ready.
+9. Keep the codebase easy for multiple developers to contribute to.
+
+---
+
+# 🏗️ Architecture
+
+The MVP follows a modular monorepo architecture.
+
+```text
+                         ┌──────────────────────┐
+                         │      React Web       │
+                         │  Tailwind + Lucide   │
+                         └──────────┬───────────┘
+                                    │
+                                    │ REST / WebSocket
+                                    ▼
+                         ┌──────────────────────┐
+                         │    Node / Express    │
+                         │      API Server      │
+                         └──────────┬───────────┘
+                                    │
+              ┌─────────────────────┼─────────────────────┐
+              │                     │                     │
+              ▼                     ▼                     ▼
+       ┌──────────────┐      ┌──────────────┐      ┌──────────────┐
+       │ CRM Services │      │ Auth / RBAC  │      │ Socket.IO    │
+       │ Leads/Deals  │      │ JWT / Tenant │      │ Real-time    │
+       └──────┬───────┘      └──────────────┘      └──────────────┘
+              │
+              ▼
+       ┌──────────────┐
+       │ Primary DB   │
+       │ CRM Data     │
+       └──────────────┘
+
+                                    │
+                                    │ AI / RAG
+                                    ▼
+
+                         ┌──────────────────────┐
+                         │      RAG Service     │
+                         │     LangChain.js     │
+                         └──────────┬───────────┘
+                                    │
+                  ┌─────────────────┼─────────────────┐
+                  ▼                 ▼                 ▼
+            ┌──────────┐      ┌────────────┐   ┌──────────────┐
+            │ Ingestion│      │ Embeddings │   │   Retriever  │
+            └──────────┘      └────────────┘   └──────┬───────┘
+                                                      │
+                                                      ▼
+                                               ┌──────────────┐
+                                               │  ChromaDB    │
+                                               │ Vector Store │
+                                               └──────────────┘
+```
+
+---
+
+# 🧰 Tech Stack
+
+## Frontend
+
+| Technology      | Purpose      |
+| --------------- | ------------ |
+| React           | UI framework |
+| Tailwind CSS v4 | Styling      |
+| Lucide          | UI icons     |
+
+## Backend
+
+| Technology | Purpose                 |
+| ---------- | ----------------------- |
+| Node.js    | Runtime                 |
+| Express.js | REST API                |
+| JWT        | Authentication          |
+| Socket.IO  | Real-time communication |
+| Cloudinary | File/media storage      |
+
+## AI / RAG
+
+| Technology   | Purpose                |
+| ------------ | ---------------------- |
+| LangChain.js | RAG orchestration      |
+| Hugging Face | Embeddings / AI models |
+| ChromaDB     | Vector database        |
+
+## Data
+
+The application uses:
+
+```text
+Primary Database
+      │
+      ├── Companies
+      ├── Users
+      ├── Leads
+      ├── Contacts
+      ├── Deals
+      ├── Activities
+      └── CRM entities
+
+ChromaDB
+      │
+      └── Embeddings / Vectorized knowledge
+```
+
+**Important:** ChromaDB is used for vector data and retrieval. It is not the primary CRM database.
+
+---
+
+# 📁 Repository Structure
+
+```text
 ai-sales-crm/
-│   │   │   │   ├── document.routes.js
-│   │   │   │   └── chat.routes.js
-│   │   │   │
-│   │   │   ├── models/
-│   │   │   │   ├── User.js
-│   │   │   │   ├── Lead.js
-│   │   │   │   ├── Salesperson.js
-│   │   │   │   ├── Document.js
-│   │   │   │   ├── Conversation.js
-│   │   │   │   └── Message.js
-│   │   │   │
-│   │   │   ├── services/
-│   │   │   │   ├── auth.service.js
-│   │   │   │   ├── lead.service.js
-│   │   │   │   ├── salesperson.service.js
-│   │   │   │   ├── document.service.js
-│   │   │   │   └── rag.service.js
-│   │   │   │
+│
+├── apps/
+│   │
+│   ├── web/
+│   │   ├── src/
+│   │   ├── components/
+│   │   ├── pages/
+│   │   ├── hooks/
+│   │   └── services/
+│   │
+│   ├── server/
+│   │   ├── src/
+│   │   │   ├── config/
+│   │   │   ├── controllers/
 │   │   │   ├── middleware/
-│   │   │   │   ├── auth.middleware.js
-│   │   │   │   ├── error.middleware.js
-│   │   │   │   ├── upload.middleware.js
-│   │   │   │   └── validation.middleware.js
-│   │   │   │
-│   │   │   ├── validators/
-│   │   │   │   ├── auth.validator.js
-│   │   │   │   ├── lead.validator.js
-│   │   │   │   ├── salesperson.validator.js
-│   │   │   │   └── document.validator.js
-│   │   │   │
+│   │   │   ├── models/
+│   │   │   ├── routes/
+│   │   │   ├── services/
 │   │   │   ├── sockets/
-│   │   │   │   └── chat.socket.js
-│   │   │   │
 │   │   │   ├── utils/
-│   │   │   ├── app.js
-│   │   │   └── server.js
-│   │   │
+│   │   │   └── app.js
 │   │   └── package.json
 │   │
 │   └── rag/
 │       ├── src/
-│       │   │
-│       │   ├── config/
-│       │   │   ├── chroma.js
-│       │   │   ├── embeddings.js
-│       │   │   └── llm.js
-│       │   │
 │       │   ├── ingestion/
-│       │   │   ├── loader.js
-│       │   │   ├── splitter.js
-│       │   │   ├── cleaner.js
-│       │   │   └── embedder.js
-│       │   │
+│       │   ├── embeddings/
 │       │   ├── retrieval/
-│       │   │   ├── retriever.js
-│       │   │   └── filters.js
-│       │   │
 │       │   ├── chains/
-│       │   │   ├── rag.chain.js
-│       │   │   └── prompt.js
-│       │   │
-│       │   ├── agents/
-│       │   │   └── sales.agent.js
-│       │   │
-│       │   ├── utils/
-│       │   └── index.js
-│       │
-│       ├── package.json
-│       └── README.md
+│       │   └── services/
+│       └── package.json
 │
 ├── packages/
-│   ├── shared/
-│   │   ├── constants/
-│   │   ├── types/
-│   │   └── utils/
-│   │
-│   └── config/
+│   └── shared/
+│       ├── constants/
+│       ├── schemas/
+│       ├── types/
+│       └── utils/
 │
 ├── docs/
 │   ├── architecture.md
-│   ├── api.md
 │   ├── database.md
+│   ├── api.md
+│   ├── authentication.md
 │   ├── rag.md
-│   ├── deployment.md
-│   └── development.md
+│   ├── ingestion.md
+│   └── chat.md
 │
-├── scripts/
-│   ├── seed.js
-│   └── test-rag.js
-│
-└── tests/
-    ├── api/
-    ├── rag/
-    └── integration/
-🧩 Application Responsibilities
-apps/web
+├── .env.example
+├── .gitignore
+├── package.json
+└── README.md
+```
 
-Responsible only for presentation and client-side behavior.
+---
 
-React
- ├── Authentication UI
- ├── Dashboard
- ├── Lead Management
- ├── Salesperson Management
- ├── Knowledge Base
- └── Chat
+# 🔐 Authentication & Authorization
 
-The frontend should never directly access:
+The authentication layer uses JWT-based authentication.
 
-ChromaDB
-LLM provider
-Internal vector collections
-Database credentials
-⚙️ apps/server
+The system is designed around:
 
-The Express server is the main application gateway.
-
-Frontend
-   │
-   ▼
-Express Server
-   │
-   ├── Auth
-   ├── CRM
-   ├── Documents
-   ├── Chat
-   └── RAG Gateway
-
-The design specifically states that the backend/server acts as the linkage between the frontend/platform and the RAG agent and uses REST for this integration. fileciteturn0file0L518-L526
-
-🧠 apps/rag
-
-The RAG application owns AI-specific operations.
-
-rag/
-│
-├── ingestion/
-│     ├── Load document
-│     ├── Extract text
-│     ├── Clean text
-│     ├── Split chunks
-│     └── Generate embeddings
-│
-├── retrieval/
-│     ├── Create query embedding
-│     ├── Search ChromaDB
-│     └── Apply metadata filters
-│
-├── chains/
-│     ├── Prompt
-│     └── RAG chain
-│
-└── agents/
-      └── Sales agent
-🗃️ CRM Data Model
+```text
 User
-User
-├── id
-├── name
-├── email
-├── passwordHash
-├── role
-├── twoFactorEnabled
-├── createdAt
-└── updatedAt
-Salesperson
-Salesperson
-├── id
-├── name
-├── email
-├── phone
-├── status
-├── assignedLeads
-├── companyId
-├── createdAt
-└── updatedAt
-Lead
-Lead
-├── id
-├── name
-├── email
-├── phone
-├── source
-├── interestLevel
-├── status
-├── salespersonId
-├── notes
-├── lastInteraction
-├── companyId
-├── createdAt
-└── updatedAt
-Document
-Document
-├── id
-├── companyId
-├── name
-├── type
-├── source
-├── storageUrl
-├── status
-├── chunkCount
-├── uploadedBy
-├── createdAt
-└── updatedAt
-Conversation
-Conversation
-├── id
-├── userId / customerId
-├── leadId
-├── companyId
-├── channel
-├── status
-├── createdAt
-└── updatedAt
-Message
-Message
-├── id
-├── conversationId
-├── role
-├── content
-├── sources
-├── metadata
-└── createdAt
-🔐 Authentication Flow
-             REGISTER
-                 │
-                 ▼
-          Validate Input
-                 │
-                 ▼
-          Hash Password
-                 │
-                 ▼
-           Create User
-                 │
-                 ▼
-          Account Created
-
-
-
-
-              LOGIN
-                 │
-                 ▼
-        Validate Credentials
-                 │
-                 ▼
-        ┌────────────────┐
-        │ 2FA Enabled ?  │
-        └───────┬────────┘
-                │
-         ┌──────┴──────┐
-        YES            NO
-         │              │
-         ▼              │
-    Verify OTP          │
-         │              │
-         └──────┬───────┘
-                ▼
-           Issue JWT
-                │
-                ▼
-       Access Protected APIs
-
-MVP authentication is JWT-based and includes login, registration, forgot password and two-factor authentication as specified in the design. fileciteturn0file0L585-L591
-
-👥 Lead Management Flow
-                 CUSTOMER
-                    │
-                    ▼
-                AI CHAT
-                    │
-                    ▼
-              Conversation
-                    │
-                    ▼
-           Interest Detection
-                    │
-          ┌─────────┴─────────┐
-          │                   │
-       LOW/MED              HIGH
-          │                   │
-          ▼                   ▼
-       Continue          Create/Update
-       Conversation           Lead
-                              │
-                              ▼
-                       Assign Salesperson
-                              │
-                              ▼
-                         CRM Dashboard
-
-For the initial MVP, lead creation/assignment can be controlled through CRM APIs and UI. AI-driven lead scoring can be added after the basic workflow is stable.
-
-📚 Knowledge Base Flow
-ADMIN
   │
-  │ Upload PDF
   ▼
-Backend
-  │
-  ├── Validate file
-  ├── Store file
-  └── Create document record
-          │
-          ▼
-      RAG Ingestion
-          │
-          ▼
-     Extract Text
-          │
-          ▼
-      Clean Text
-          │
-          ▼
-       Chunk Text
-          │
-          ▼
-   Hugging Face Embedding
-          │
-          ▼
-       ChromaDB
-          │
-          ▼
-      READY TO QUERY
-💬 Chat Request Flow
-USER
- │
- │ "What are the features of Product X?"
- ▼
-React Chat
- │
- │ POST /api/chat
- ▼
-Express
- │
- ├── Authenticate
- ├── Identify company
- ├── Identify conversation
- │
- ▼
-RAG Service
- │
- ▼
-Create Query Embedding
- │
- ▼
-ChromaDB Similarity Search
- │
- ▼
-Top Relevant Chunks
- │
- ▼
-Prompt Construction
- │
- ▼
-LLM
- │
- ▼
-Grounded Answer
- │
- ▼
-Express
- │
- ▼
-React Chat
-🌐 MVP API Structure
 Authentication
-POST   /api/auth/register
-POST   /api/auth/login
-POST   /api/auth/logout
-POST   /api/auth/forgot-password
-POST   /api/auth/reset-password
-POST   /api/auth/verify-2fa
-Users
-GET    /api/users/me
-PATCH  /api/users/me
-Salespersons
-GET    /api/salespersons
-POST   /api/salespersons
-GET    /api/salespersons/:id
-PATCH  /api/salespersons/:id
-DELETE /api/salespersons/:id
-Leads
-GET    /api/leads
-POST   /api/leads
-GET    /api/leads/:id
-PATCH  /api/leads/:id
-DELETE /api/leads/:id
-PATCH  /api/leads/:id/assign
-PATCH  /api/leads/:id/status
-Documents
-GET    /api/documents
-POST   /api/documents/upload
-GET    /api/documents/:id
-DELETE /api/documents/:id
-POST   /api/documents/:id/reprocess
-Chat
-GET    /api/conversations
-POST   /api/conversations
-GET    /api/conversations/:id
-GET    /api/conversations/:id/messages
-POST   /api/chat
-🧠 RAG API Contract
-Request
-{
-  "conversationId": "conversation-id",
-  "message": "What are the features of Product X?"
-}
-Internal RAG Request
-{
-  "query": "What are the features of Product X?",
-  "companyId": "company-id",
-  "conversationId": "conversation-id"
-}
-Response
-{
-  "answer": "Product X provides ...",
-  "sources": [
-    {
-      "documentId": "doc-id",
-      "documentName": "product.pdf",
-      "page": 4
-    }
-  ],
-  "conversationId": "conversation-id"
-}
-🔌 Socket.IO
+  │
+  ▼
+JWT
+  │
+  ▼
+Authorization
+  │
+  ▼
+Tenant / Company
+  │
+  ▼
+CRM Resources
+```
 
-Socket.IO is included in the technology stack for real-time communication, but the MVP should keep the primary request/response flow REST-based.
+Every protected request must establish:
 
-Use Socket.IO for:
+* User identity
+* User permissions
+* Company/tenant context
 
-Real-time chat events
-Typing indicators
-Message status
-CRM notifications
-Future live dashboard updates
+---
 
-Do not make the entire application dependent on WebSockets when REST is sufficient.
+# 🏢 Multi-Tenancy
 
-☁️ Cloudinary
+The CRM is designed as a multi-tenant application.
 
-Cloudinary is intended for application-managed image/file assets where appropriate.
+Every tenant-owned resource should be associated with:
 
-Possible MVP uses:
+```text
+companyId
+```
 
-Company Logo
-     ↓
-Cloudinary
+Example:
 
-
-Salesperson Avatar
-     ↓
-Cloudinary
-
-
-Other UI Assets
-     ↓
-Cloudinary
-
-The actual RAG source document should have a separate document-storage strategy and metadata record. Cloudinary should not automatically become the vector/document database.
-
-🧪 Testing Strategy
-Backend
-tests/
-└── api/
-    ├── auth.test.js
-    ├── leads.test.js
-    ├── salespersons.test.js
-    ├── documents.test.js
-    └── chat.test.js
-RAG
-tests/
-└── rag/
-    ├── ingestion.test.js
-    ├── chunking.test.js
-    ├── retrieval.test.js
-    └── generation.test.js
-Evaluation Dataset
-
-Maintain a small RAG evaluation set:
-
-Question
-Expected Context
-Expected Answer
-Retrieved Context
-Actual Answer
-Pass/Fail
-
-This is important because an AI response that sounds correct is not necessarily grounded in the company's actual knowledge.
-
-🔒 Security Requirements
-
-The MVP must include:
-
-JWT authentication
-Password hashing
-Protected API routes
-Request validation
-File type validation
-File size limits
-CORS configuration
-Rate limiting
-Secure environment variables
-API error handling
-Tenant/company data isolation
-Secure document access
-Webhook verification when external channels are introduced
-Critical Rule
-
-The LLM should never receive unrestricted database access.
-
-Use:
-
-LLM
- ↓
-Structured Output / Tool Request
- ↓
-Backend Validation
- ↓
-CRM Service
- ↓
-Database
-
-Not:
-
-LLM ───────────► Database
-🏢 Multi-Tenant Design
-
-If this product will serve multiple companies, tenant isolation must be designed from the beginning.
-
-Every business-owned resource should be associated with a companyId.
-
+```text
 Company A
-│
-├── Users
-├── Salespersons
-├── Leads
-├── Documents
-├── Conversations
-└── RAG Vectors
-
-
-
+ ├── Users
+ ├── Leads
+ ├── Contacts
+ └── Deals
 
 Company B
-│
-├── Users
-├── Salespersons
-├── Leads
-├── Documents
-├── Conversations
-└── RAG Vectors
+ ├── Users
+ ├── Leads
+ ├── Contacts
+ └── Deals
+```
 
-RAG retrieval must apply the company/tenant filter.
+A user belonging to **Company A must never be able to access Company B's CRM data**.
 
-User Question
-      │
-      ▼
-companyId
-      │
-      ▼
-ChromaDB Filter
-      │
-      ▼
-Only Company's Documents
-🚀 MVP Development Phases
-Phase 1 — Foundation
-Repository setup
-React application
-Express server
-Environment configuration
-Database connection
-Basic CI/testing setup
-Phase 2 — Authentication
-Register
-Login
-Logout
-Forgot password
-JWT middleware
-2FA
-Phase 3 — CRM
-Dashboard
-Salesperson management
-Lead management
-Lead assignment
-Lead status
-Phase 4 — Knowledge Base
-PDF upload
-Document metadata
-Text extraction
+Tenant isolation must therefore be enforced at the backend/service layer rather than relying only on frontend filtering.
+
+---
+
+# 🤖 RAG Architecture
+
+The RAG system provides the AI layer with relevant company and CRM context.
+
+```text
+Document
+   │
+   ▼
+Ingestion
+   │
+   ▼
+Text Extraction
+   │
+   ▼
 Chunking
-Embedding
-ChromaDB storage
-Phase 5 — RAG Agent
-LangChain setup
+   │
+   ▼
+Embeddings
+   │
+   ▼
+ChromaDB
+   │
+   ▼
 Retriever
-Prompt
+   │
+   ▼
+Relevant Context
+   │
+   ▼
 LLM
-Context-aware response
-Source metadata
-Phase 6 — Chat
-Conversation UI
-Message persistence
-Chat API
-RAG integration
-Loading/error states
-Phase 7 — CRM + AI
-Conversation → lead
-Interest detection
-Lead update
-High-interest workflow
-Salesperson assignment
-Phase 8 — Hardening
-Testing
-Security
-Logging
-Monitoring
-RAG evaluation
-Performance optimization
-🚫 Out of MVP Scope
+   │
+   ▼
+AI Response
+```
 
-The following should not block the first MVP:
+The RAG layer should remain modular so that models, embedding providers, and retrieval strategies can evolve independently from the CRM API.
 
-WhatsApp Business API
-Advanced automatic lead scoring
-Voice agent
-Multiple messaging platforms
-Advanced analytics
-Complex AI sales automation
-Fully autonomous CRM actions
-Large-scale distributed microservices
+---
 
-WhatsApp should be treated as a later communication channel. The original design explicitly chooses a dummy/internal chat interface for the MVP because WhatsApp API access is more difficult to obtain. fileciteturn0file0L700-L734
+# 💬 Chat Architecture
 
-📦 MVP Definition of Done
+Real-time communication is handled using Socket.IO.
 
-The MVP is complete when:
+```text
+React Client
+     │
+     │ WebSocket
+     ▼
+Socket.IO Server
+     │
+     ├── Authentication
+     ├── Tenant validation
+     ├── Room management
+     └── Message events
+             │
+             ▼
+        Chat Service
+             │
+             ▼
+        Primary DB
+```
 
- User can register.
- User can log in.
- JWT-protected routes work.
- Forgot-password flow works.
- 2FA works.
- Dashboard is functional.
- Salespersons can be managed.
- Leads can be created and managed.
- Leads can be assigned to salespeople.
- Company/product PDFs can be uploaded.
- Documents can be processed.
- Chunks can be embedded.
- Vectors are stored in ChromaDB.
- User questions retrieve relevant context.
- LLM generates grounded responses.
- Chat interface communicates with the backend.
- Conversations are persisted.
- RAG sources can be displayed.
- Company/tenant data is isolated.
- Basic API and RAG tests pass.
- Security requirements are implemented.
-🧭 Final MVP System
-                         ┌─────────────────┐
-                         │      ADMIN      │
-                         └────────┬────────┘
-                                  │
-                                  ▼
-                    ┌────────────────────────┐
-                    │     CRM DASHBOARD      │
-                    │                        │
-                    │ Auth                   │
-                    │ Salespersons           │
-                    │ Leads                  │
-                    │ Assignments             │
-                    │ Knowledge Base         │
-                    └───────────┬────────────┘
-                                │
-                         REST API / HTTP
-                                │
-                                ▼
-                    ┌────────────────────────┐
-                    │    EXPRESS SERVER      │
-                    │                        │
-                    │ Auth Service            │
-                    │ CRM Service             │
-                    │ Document Service        │
-                    │ Chat Service            │
-                    │ RAG Gateway             │
-                    └───────┬─────────┬──────┘
-                            │         │
-                            │         │
-                            │         ▼
-                            │   ┌─────────────┐
-                            │   │  LangChain  │
-                            │   │     RAG     │
-                            │   └──────┬──────┘
-                            │          │
-                            │          ▼
-                            │   ┌─────────────┐
-                            │   │  ChromaDB   │
-                            │   └─────────────┘
-                            │
-                            ▼
-                    ┌──────────────────┐
-                    │  Primary DB      │
-                    │                  │
-                    │ Users            │
-                    │ Leads            │
-                    │ Salespersons     │
-                    │ Documents        │
-                    │ Conversations    │
-                    │ Messages         │
-                    └──────────────────┘
+The chat layer can later be connected to the AI/RAG system for context-aware sales conversations.
 
+---
 
+# 🌐 API
 
+The backend API is versioned.
 
-                    CUSTOMER / USER
-                          │
-                          ▼
-                    ┌─────────────┐
-                    │  AI CHAT UI │
-                    └──────┬──────┘
-                           │
-                           ▼
-                     EXPRESS API
-                           │
-                           ▼
-                       RAG AGENT
-                           │
-                           ▼
-                    ┌─────────────┐
-                    │  AI ANSWER  │
-                    └──────┬──────┘
-                           │
-                           ▼
-                    CRM / LEAD FLOW
-                           │
-                           ▼
-                    SALES PERSON
-🏁 Product Principle
+Base path:
 
-Build the CRM and RAG system as the core product. Treat chat as the first interface and WhatsApp as a future channel.
+```text
+/api/v1
+```
 
-The MVP should therefore prove one complete business loop:
+Initial health endpoint:
 
-Company
-  ↓
-Upload Knowledge
-  ↓
-RAG Indexing
-  ↓
-Customer Question
-  ↓
-AI Retrieval
-  ↓
-Grounded Response
-  ↓
-Conversation
-  ↓
-Lead
-  ↓
-Salesperson
-  ↓
-CRM
+```http
+GET /api/v1/health
+```
 
-That loop is the core proof that the product works.
-"""
+Example response:
 
-path = Path("/mnt/data/README.md")
-path.write_text(readme, encoding="utf-8")
-print(path)
+```json
+{
+  "status": "ok",
+  "service": "ai-sales-crm"
+}
+```
 
+Future API modules include:
 
+```text
+/api/v1/auth
+/api/v1/users
+/api/v1/companies
+/api/v1/leads
+/api/v1/contacts
+/api/v1/deals
+/api/v1/activities
+/api/v1/chat
+/api/v1/ai
+/api/v1/knowledge
+```
 
-STDOUT/STDERR
-/mnt/data/README.md
+---
 
+# ⚙️ Environment Variables
 
-Done. I created the complete MVP README.md with:
+Create a local environment file from the example:
 
-Full project/repository structure
-MVP architecture
-RAG data flow
-CRM flow
-Authentication flow
-Chat flow
-Tech stack and technology icons
-React + Tailwind + Lucide
-Node.js + Express + Cloudinary + Socket.IO
-LangChain + ChromaDB + Hugging Face
-Database models
-API structure
-RAG API contract
-Multi-tenant architecture
-Security requirements
-Testing strategy
-Development phases
-MVP definition of done
-WhatsApp explicitly kept out of the initial MVP
-Complete end-to-end line-draw architecture
+```bash
+cp .env.example .env
+```
+
+Environment configuration should contain values for:
+
+```text
+DATABASE_URL
+JWT_SECRET
+JWT_EXPIRES_IN
+
+CLOUDINARY_CLOUD_NAME
+CLOUDINARY_API_KEY
+CLOUDINARY_API_SECRET
+
+HUGGINGFACE_API_KEY
+
+CHROMA_URL
+```
+
+Never commit `.env` files containing secrets.
+
+---
+
+# 🚀 Local Development
+
+## 1. Clone the repository
+
+```bash
+git clone <repository-url>
+cd ai-sales-crm
+```
+
+## 2. Install dependencies
+
+```bash
+npm install
+```
+
+## 3. Configure environment
+
+```bash
+cp .env.example .env
+```
+
+Add the required credentials.
+
+## 4. Start development
+
+Run the required applications according to the workspace scripts.
+
+Example:
+
+```bash
+npm run dev
+```
+
+---
+
+# 🩺 Health & Verification
+
+Phase 0 must establish a working development environment before feature development begins.
+
+Minimum verification:
+
+```text
+✓ Frontend starts
+✓ Backend starts
+✓ Database connects
+✓ Health endpoint works
+✓ Environment variables load
+✓ Authentication middleware loads
+✓ Tenant context is available
+✓ RAG service initializes
+✓ ChromaDB connection works
+✓ Frontend can communicate with backend
+```
+
+---
+
+# 🛡️ Error Handling & Logging
+
+The backend should use centralized error handling.
+
+```text
+Request
+   │
+   ▼
+Route
+   │
+   ▼
+Controller
+   │
+   ▼
+Service
+   │
+   ▼
+Error
+   │
+   ▼
+Central Error Middleware
+   │
+   ▼
+Standard API Response
+```
+
+Errors should not expose:
+
+* Secrets
+* Database credentials
+* Internal stack traces in production
+* Sensitive tenant information
+
+---
+
+# 🧪 Testing Strategy
+
+Testing will be introduced incrementally.
+
+```text
+Unit Tests
+    │
+    ├── Services
+    ├── Utilities
+    └── Validation
+
+Integration Tests
+    │
+    ├── API
+    ├── Database
+    └── Authentication
+
+E2E Tests
+    │
+    └── Critical user flows
+```
+
+Critical flows should eventually include:
+
+* Registration
+* Login
+* Authorization
+* Tenant isolation
+* Lead creation
+* Deal management
+* Chat
+* Document ingestion
+* RAG retrieval
+
+---
+
+# 🌳 Git & Team Development Workflow
+
+Since multiple developers are working on the same repository, **do not develop directly on `main`**.
+
+Recommended workflow:
+
+```text
+main
+ │
+ ├── feature/authentication
+ │
+ ├── feature/crm-leads
+ │
+ ├── feature/chat
+ │
+ └── fix/payment-error
+```
+
+Create a branch:
+
+```bash
+git switch main
+git pull origin main
+
+git switch -c feature/my-feature
+```
+
+Make changes:
+
+```bash
+git add .
+git commit -m "feat: add my feature"
+```
+
+Push:
+
+```bash
+git push -u origin feature/my-feature
+```
+
+Then create a Pull Request:
+
+```text
+feature/my-feature
+        │
+        ▼
+      Review
+        │
+        ▼
+      main
+```
+
+### Commit Convention
+
+Use conventional commit prefixes:
+
+```text
+feat:     New feature
+fix:      Bug fix
+refactor: Code restructuring
+docs:     Documentation
+test:     Tests
+chore:    Maintenance
+perf:     Performance improvement
+```
+
+Examples:
+
+```bash
+git commit -m "feat: add lead management"
+git commit -m "fix: resolve JWT validation"
+git commit -m "docs: update RAG architecture"
+git commit -m "refactor: simplify chat service"
+```
+
+---
+
+# 🔄 Keeping Your Branch Updated
+
+Before starting new work:
+
+```bash
+git switch main
+git pull origin main
+git switch -c feature/new-feature
+```
+
+If `main` changes while you are working:
+
+```bash
+git fetch origin
+git merge origin/main
+```
+
+Follow the team's agreed merge/rebase policy when updating an existing feature branch.
+
+---
+
+# 📚 Documentation
+
+Project documentation is maintained inside `/docs`.
+
+| Document            | Purpose                        |
+| ------------------- | ------------------------------ |
+| `architecture.md`   | System architecture            |
+| `database.md`       | Database design                |
+| `api.md`            | API specification              |
+| `authentication.md` | Authentication & authorization |
+| `rag.md`            | RAG architecture               |
+| `ingestion.md`      | Document ingestion pipeline    |
+| `chat.md`           | Chat architecture              |
+
+Documentation should be updated alongside major architectural changes.
+
+---
+
+# 🗺️ Development Phases
+
+## Phase 0 — Foundation
+
+* [ ] Create monorepo
+* [ ] Configure frontend
+* [ ] Configure backend
+* [ ] Configure RAG application
+* [ ] Configure shared package
+* [ ] Configure environment variables
+* [ ] Configure database
+* [ ] Configure ChromaDB
+* [ ] Add health endpoint
+* [ ] Add centralized error handling
+* [ ] Add logging
+* [ ] Establish tenant context
+* [ ] Verify frontend/backend communication
+
+## Phase 1 — Authentication
+
+* [ ] Registration
+* [ ] Login
+* [ ] JWT authentication
+* [ ] Logout
+* [ ] Protected routes
+* [ ] RBAC
+* [ ] Company/tenant creation
+* [ ] Tenant isolation
+
+## Phase 2 — CRM Core
+
+* [ ] Companies
+* [ ] Users
+* [ ] Leads
+* [ ] Contacts
+* [ ] Deals
+* [ ] Activities
+* [ ] Sales pipeline
+
+## Phase 3 — Knowledge & RAG
+
+* [ ] Document upload
+* [ ] Document ingestion
+* [ ] Text extraction
+* [ ] Chunking
+* [ ] Embedding generation
+* [ ] ChromaDB storage
+* [ ] Retrieval
+* [ ] Context-aware responses
+
+## Phase 4 — AI & Chat
+
+* [ ] Real-time chat
+* [ ] AI assistant
+* [ ] CRM-aware conversations
+* [ ] RAG-powered responses
+* [ ] Conversation history
+* [ ] AI sales assistance
+
+## Phase 5 — Production Hardening
+
+* [ ] Automated tests
+* [ ] Security review
+* [ ] Performance optimization
+* [ ] Observability
+* [ ] CI/CD
+* [ ] Production deployment
+* [ ] Backup strategy
+
+---
+
+# 📏 Engineering Principles
+
+The project follows these principles:
+
+### 1. Separation of Concerns
+
+Business logic should live in services rather than controllers.
+
+### 2. API Versioning
+
+All public APIs should use versioned routes.
+
+### 3. Tenant Isolation
+
+Every tenant-owned resource must enforce `companyId` isolation.
+
+### 4. Secure by Default
+
+Secrets must remain outside source control.
+
+### 5. Modular AI
+
+The AI/RAG layer should not tightly couple itself to the CRM core.
+
+### 6. Review Before Merge
+
+Changes should go through Pull Requests.
+
+### 7. Documentation Alongside Code
+
+Architectural changes should be reflected in `/docs`.
+
+---
+
+# 🚧 MVP Scope
+
+The MVP focuses on establishing a strong CRM and AI foundation.
+
+### Included
+
+* Authentication
+* Multi-tenancy
+* CRM core
+* Leads
+* Contacts
+* Deals
+* Activities
+* Real-time chat foundation
+* Document ingestion
+* RAG
+* AI assistance
+* Cloudinary media handling
+
+### Not Part of the Initial MVP
+
+The system should avoid prematurely introducing additional integrations and complexity before the core CRM, AI, RAG, authentication, and multi-tenant architecture are stable.
+
+---
+
+# 📌 Definition of Done
+
+A feature is considered complete when:
+
+```text
+✓ Code implemented
+✓ Validation added
+✓ Error handling added
+✓ Tenant isolation verified
+✓ Tests added where applicable
+✓ Documentation updated
+✓ Code reviewed
+✓ PR approved
+✓ CI checks pass
+✓ Merged into main
+```
+
+---
+
+# 👥 Contribution
+
+1. Create an issue or select an assigned task.
+2. Pull the latest `main`.
+3. Create a feature/fix branch.
+4. Implement the change.
+5. Test locally.
+6. Commit using conventional commits.
+7. Push the branch.
+8. Open a Pull Request.
+9. Address review comments.
+10. Merge only after approval.
+
+---
+
+# 📄 License
+
+License information will be added before the first public production release.
+
+---
+
+## Project Status
+
+**Current Stage:** MVP Development — Phase 0 / Foundation
+
+The architecture and documentation are being developed first so that feature development can proceed consistently across the team.

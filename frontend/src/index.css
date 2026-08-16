@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html { -webkit-font-smoothing: antialiased; }
+
+body {
+  @apply bg-surface text-ink-900 font-sans;
+}
+
+::selection { background: #B08D5733; }
+
+/* Custom scrollbar */
+* { scrollbar-width: thin; scrollbar-color: #C3CCDE transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: #C3CCDE; border-radius: 8px; }
+*::-webkit-scrollbar-thumb:hover { background: #93A2C0; }
+*::-webkit-scrollbar-track { background: transparent; }
+
+.font-feature-tnum { font-variant-numeric: tabular-nums; }
+
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, #EEF0F3 25%, #F5F6F8 37%, #EEF0F3 63%);
+  background-size: 800px 100%;
+  animation: shimmer 1.4s linear infinite;
+}

@@ -1,0 +1,23 @@
+docs/
+│
+├── architecture.md
+│
+├── database.md
+│
+├── api.md
+│
+├── authentication.md
+│
+├── rag.md
+│
+├── ingestion.md
+│
+├── crm.md
+│
+├── chat.md
+│
+├── ai-crm-integration.md
+│
+├── environment.md
+│
+└── development-standards.md

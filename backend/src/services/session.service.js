@@ -35,8 +35,16 @@ const revokeSession = async (sessionId) => {
   });
 };
 
+const revokeAllUserSessions = async (userId) => {
+  await Session.updateMany(
+    { userId, revokedAt: null },
+    { revokedAt: new Date() }
+  );
+};
+
 export {
   createSession,
   findSessionByRefreshToken,
   revokeSession,
+  revokeAllUserSessions,
 };

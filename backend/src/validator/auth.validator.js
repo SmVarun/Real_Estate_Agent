@@ -43,4 +43,48 @@ const loginSchema = z.object({
     .max(128, "Password cannot exceed 128 characters"),
 });
 
-export {registerSchema , loginSchema}
+const refreshSchema = z.object({
+  refreshToken: z
+    .string()
+    .min(1, "Refresh token is required"),
+});
+
+const forgotPasswordSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .email("Invalid email address")
+    .transform((value) => value.toLowerCase()),
+});
+
+const resetPasswordSchema = z.object({
+  token: z
+    .string()
+    .min(1, "Reset token is required"),
+
+  password: registerSchema.shape.password,
+});
+
+const resendVerificationSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .email("Invalid email address")
+    .transform((value) => value.toLowerCase()),
+});
+
+const verifyEmailQuerySchema = z.object({
+  token: z
+    .string()
+    .min(1, "Verification token is required"),
+});
+
+export {
+  registerSchema,
+  loginSchema,
+  refreshSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+  resendVerificationSchema,
+  verifyEmailQuerySchema,
+}

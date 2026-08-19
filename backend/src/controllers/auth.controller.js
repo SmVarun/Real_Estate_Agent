@@ -4,8 +4,6 @@ import {
   refreshSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
-  resendVerificationSchema,
-  verifyEmailQuerySchema,
 } from "../validator/auth.validator.js";
 
 import {
@@ -20,12 +18,6 @@ import {
   resetPassword,
 } from "../services/password-reset.service.js";
 
-import {
-  sendVerificationEmail,
-  verifyEmail,
-  resendVerificationEmail,
-} from "../services/email-verification.service.js";
-
 const register = async (req, res, next) => {
   try {
     /*
@@ -34,26 +26,28 @@ const register = async (req, res, next) => {
     const validatedData = registerSchema.parse(req.body);
 
     /*
-     * Create user
+     * Get request metadata from the server.
+     *
+     * The client does NOT provide these values.
      */
-    const user = await registerUser(validatedData);
+    const userAgent = req.get("user-agent");
+    const ipAddress = req.ip;
 
     /*
-     * A failure here must not fail registration, since the
-     * account has already been created.
+     * Create the user and sign them in immediately, so the
+     * client can go straight to onboarding with the same
+     * payload /login returns.
      */
-    try {
-      await sendVerificationEmail(user);
-    } catch (error) {
-      console.error("Failed to issue verification email:", error.message);
-    }
+    const result = await registerUser({
+      ...validatedData,
+      userAgent,
+      ipAddress,
+    });
 
     return res.status(201).json({
       success: true,
       message: "User registered successfully",
-      data: {
-        user,
-      },
+      data: result,
     });
   } catch (error) {
     next(error);
@@ -195,49 +189,6 @@ const resetPasswordHandler = async (req, res, next) => {
   }
 };
 
-const verifyEmailHandler = async (req, res, next) => {
-  try {
-    /*
-     * Token comes from the query string, not a JSON body.
-     */
-    const validatedData = verifyEmailQuerySchema.parse(req.query);
-
-    await verifyEmail(validatedData);
-
-    return res.status(200).json({
-      success: true,
-      message: "Email verified successfully",
-      data: null,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-const resendVerification = async (req, res, next) => {
-  try {
-    /*
-     * Validate request body
-     */
-    const validatedData = resendVerificationSchema.parse(req.body);
-
-    /*
-     * Always respond identically regardless of whether the
-     * account exists or is already verified, to avoid email
-     * enumeration.
-     */
-    await resendVerificationEmail(validatedData);
-
-    return res.status(200).json({
-      success: true,
-      message: "If verification is required, a verification email has been sent.",
-      data: null,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
 export {
   register,
   login,
@@ -245,6 +196,4 @@ export {
   logout,
   forgotPassword,
   resetPasswordHandler,
-  verifyEmailHandler,
-  resendVerification,
 };

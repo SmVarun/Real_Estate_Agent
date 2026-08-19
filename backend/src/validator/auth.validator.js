@@ -65,26 +65,10 @@ const resetPasswordSchema = z.object({
   password: registerSchema.shape.password,
 });
 
-const resendVerificationSchema = z.object({
-  email: z
-    .string()
-    .trim()
-    .email("Invalid email address")
-    .transform((value) => value.toLowerCase()),
-});
-
-const verifyEmailQuerySchema = z.object({
-  token: z
-    .string()
-    .min(1, "Verification token is required"),
-});
-
 export {
   registerSchema,
   loginSchema,
   refreshSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
-  resendVerificationSchema,
-  verifyEmailQuerySchema,
 }

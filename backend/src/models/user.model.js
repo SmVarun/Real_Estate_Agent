@@ -41,11 +41,6 @@ const userSchema = new mongoose.Schema(
       default: "sales_rep",
     },
 
-    isEmailVerified: {
-      type: Boolean,
-      default: false,
-    },
-
     twoFactorEnabled: {
       type: Boolean,
       default: false,

@@ -15,8 +15,8 @@ Base URL for every endpoint below:
 ## 0. Read this before integrating
 
 - **No authentication middleware exists in this codebase.** `login` and `refresh` issue a JWT access token, and a `verifyAccessToken` utility exists (`backend/src/utils/jwt.js`), but no route currently checks the `Authorization` header. Every endpoint documented below is publicly reachable — none of them require a Bearer token today. Build the frontend to send `Authorization: Bearer <accessToken>` on future protected calls anyway, since that is clearly the intended pattern, but do not expect any endpoint in this document to reject a missing/invalid token right now.
-- **Registration does not log the user in.** `POST /register` returns only the created user object — no tokens. The frontend must call `POST /login` afterward.
-- **Login does not require a verified email.** Nothing in `loginUser` checks `isEmailVerified`. A user can log in immediately after registering, before clicking the verification link.
+- **Registration logs the user in.** `POST /register` returns the exact same payload as `POST /login` — `{ user, accessToken, refreshToken }` — and creates a server-side session. The frontend must **not** call `/login` after a successful `/register`; store the tokens and go straight to onboarding.
+- **There is no email verification.** No verification email is sent, there are no `/verify-email` or `/resend-verification` endpoints, and the `User` model has no `isEmailVerified` field. Register and login are the only two ways into the app.
 - **Refresh tokens are rotated on every use.** Each successful `POST /refresh` revokes the refresh token that was just used and returns a brand-new `accessToken`/`refreshToken` pair. The frontend must overwrite its stored `refreshToken` after every refresh call, or the next refresh will fail with 401.
 - **`POST /logout` logs out one session only** (the one tied to the `refreshToken` you send). There is no "log out of all devices" endpoint. A successful password reset does revoke all sessions for that user as a side effect of that specific flow.
 - All JSON responses share one envelope shape (see [§2](#2-standard-response-envelope)).
@@ -27,14 +27,12 @@ Base URL for every endpoint below:
 
 | Method | Path | Auth required | Purpose |
 |---|---|---|---|
-| POST | `/api/v1/auth/register` | No | Create a new user account |
+| POST | `/api/v1/auth/register` | No | Create a new user account **and sign them in** |
 | POST | `/api/v1/auth/login` | No | Authenticate and receive a token pair |
 | POST | `/api/v1/auth/refresh` | No (refresh token in body) | Rotate a refresh token for a new token pair |
 | POST | `/api/v1/auth/logout` | No (refresh token in body) | Revoke a single session |
 | POST | `/api/v1/auth/forgot-password` | No | Request a password-reset email |
 | POST | `/api/v1/auth/reset-password` | No (reset token in body) | Set a new password using a reset token |
-| GET | `/api/v1/auth/verify-email` | No (token in query string) | Confirm an email address |
-| POST | `/api/v1/auth/resend-verification` | No | Re-send the verification email |
 
 ---
 
@@ -50,7 +48,7 @@ Base URL for every endpoint below:
 }
 ```
 
-`data` is `null` for endpoints that don't return a payload (logout, forgot-password, reset-password, verify-email, resend-verification).
+`data` is `null` for endpoints that don't return a payload (logout, forgot-password, reset-password).
 
 ### Validation error (Zod) — HTTP 400
 
@@ -85,7 +83,7 @@ Status code is whatever the throwing code set as `error.statusCode`, defaulting 
 
 ### Purpose
 
-Creates a new user account and, best-effort, sends an email-verification link. Does **not** return an access/refresh token — the client must call `/login` separately afterward.
+Creates a new user account **and immediately issues a session for it**. Returns the same `{ user, accessToken, refreshToken }` payload as `/login`, so the client can move straight into onboarding without a second round trip. No email is sent.
 
 ### Authentication
 
@@ -98,6 +96,8 @@ Required: No
 ```http
 Content-Type: application/json
 ```
+
+`User-Agent` and the caller's IP are captured automatically by the server (`req.get("user-agent")`, `req.ip`) and stored with the session — the client does not send these explicitly.
 
 #### Body
 
@@ -134,14 +134,19 @@ There is no `companyName` field — company/tenant concepts from the architectur
       "email": "john@example.com",
       "username": "johndoe",
       "role": "sales_rep",
-      "isEmailVerified": false,
+      "twoFactorEnabled": false,
+      "lastLoginAt": "2026-08-17T06:05:00.000Z",
       "createdAt": "2026-08-17T06:05:00.000Z"
-    }
+    },
+    "accessToken": "eyJhbGciOi...",
+    "refreshToken": "eyJhbGciOi..."
   }
 }
 ```
 
 `role` defaults to `"sales_rep"` for every new account (enum: `admin`, `manager`, `sales_rep`). There is no signup flow that produces an `admin` account.
+
+The `data` object is structurally identical to the one `/login` returns, so a single client-side `handleAuthSuccess(data)` can serve both entry points.
 
 ### Error Responses
 
@@ -152,9 +157,9 @@ There is no `companyName` field — company/tenant concepts from the architectur
 | 409 | Username already taken | `"Username is already taken"` |
 | 500 | Unexpected server error | `"Internal server error"` (or the raw error message) |
 
-### Email verification side effect
+### Session side effect
 
-After the user is created, the backend calls `sendVerificationEmail(user)`. If sending the email fails (e.g. SMTP outage), the error is logged server-side and **swallowed** — registration still returns `201`. The frontend should not assume the verification email definitely arrived; consider surfacing a "resend verification email" affordance (see `/resend-verification`).
+Registration goes through the same `issueSession` helper as login: it creates a `Session` document (storing only the SHA-256 hash of the refresh token, plus `userAgent`, `ipAddress`, `expiresAt`) and sets `lastLoginAt`. The refresh token returned here is a first-class refresh token — it works with `/refresh` and `/logout` exactly like one obtained from `/login`.
 
 ---
 
@@ -162,7 +167,7 @@ After the user is created, the backend calls `sendVerificationEmail(user)`. If s
 
 ### Purpose
 
-Authenticates a user with email + password and issues an access/refresh token pair. Also creates a server-side session record tied to the refresh token.
+Authenticates an existing user with email + password and issues an access/refresh token pair. Also creates a server-side session record tied to the refresh token. This is the second of the two ways into the app — `/register` is the first, and both return the identical payload.
 
 ### Authentication
 
@@ -207,9 +212,9 @@ Content-Type: application/json
       "email": "john@example.com",
       "username": "johndoe",
       "role": "sales_rep",
-      "isEmailVerified": false,
       "twoFactorEnabled": false,
-      "lastLoginAt": "2026-08-17T06:05:00.000Z"
+      "lastLoginAt": "2026-08-17T06:05:00.000Z",
+      "createdAt": "2026-08-17T06:05:00.000Z"
     },
     "accessToken": "eyJhbGciOi...",
     "refreshToken": "eyJhbGciOi..."
@@ -402,7 +407,7 @@ There is intentionally no 404/"email not found" response — do not build UI tha
 ### Behavior detail
 
 - Reset token: `crypto.randomBytes(32).toString("hex")`, only its SHA-256 hash is stored (`PasswordResetToken.tokenHash`).
-- Expiry: fixed **1 hour** from issuance (`RESET_TOKEN_TTL_MS`, hardcoded — not environment-configurable, unlike the email-verification TTL).
+- Expiry: fixed **1 hour** from issuance (`RESET_TOKEN_TTL_MS`, hardcoded — not environment-configurable).
 - Reset link sent to the user: `${FRONTEND_URL}/reset-password?token=<rawToken>` — the frontend route at that path is expected to read `token` from the query string and submit it to `/reset-password`.
 - If the SMTP send fails, the failure is logged server-side and swallowed; the response is unaffected.
 
@@ -467,116 +472,7 @@ Content-Type: application/json
 
 ---
 
-## 9. GET /api/v1/auth/verify-email
-
-### Purpose
-
-Confirms a user's email address using the token from the verification email link.
-
-### Authentication
-
-Required: No (verification token in query string acts as the credential)
-
-### Request
-
-#### Headers
-
-None required beyond standard HTTP — this is a `GET` with no body.
-
-#### Query Parameters
-
-| Param | Rules |
-|---|---|
-| `token` | string, required (min 1 char) — validated via `verifyEmailQuerySchema` against `req.query`, **not** the body |
-
-Example: `GET /api/v1/auth/verify-email?token=<raw-token-from-email-link>`
-
-### Successful Response — `200 OK`
-
-```json
-{
-  "success": true,
-  "message": "Email verified successfully",
-  "data": null
-}
-```
-
-### Error Responses
-
-| Status | Condition | `message` |
-|---|---|---|
-| 400 | `token` query param missing | `"Validation failed"` (+ `errors` array) |
-| 400 | Token not found, already used, expired, or owning user no longer exists | `"Invalid or expired verification token"` (same message for all four cases) |
-| 500 | Unexpected server error | — |
-
-### Behavior detail
-
-- Token: `crypto.randomBytes(32).toString("hex")`, only its SHA-256 hash is stored (`EmailVerificationToken.tokenHash`).
-- Expiry: `EMAIL_VERIFICATION_EXPIRES_IN` env var, defaulting to `24h` if unset.
-- Single-use: `usedAt` is set on consumption, even if the user's email was already verified by an earlier call.
-- Verifying does not issue any tokens and does not log the user in — the frontend should redirect to login (or show a success state) after this call succeeds, not expect session data back.
-
----
-
-## 10. POST /api/v1/auth/resend-verification
-
-### Purpose
-
-Re-sends the verification email for an unverified account, invalidating any previously issued unused verification token first. Responds identically regardless of whether the email exists, is already verified, or is genuinely unverified — to prevent enumeration.
-
-### Authentication
-
-Required: No
-
-### Request
-
-#### Headers
-
-```http
-Content-Type: application/json
-```
-
-#### Body
-
-```json
-{
-  "email": "john@example.com"
-}
-```
-
-#### Validation rules (`resendVerificationSchema`)
-
-| Field | Rules |
-|---|---|
-| `email` | string, trimmed, must be a valid email, lowercased |
-
-### Successful Response — `200 OK`
-
-Always this response:
-
-```json
-{
-  "success": true,
-  "message": "If verification is required, a verification email has been sent.",
-  "data": null
-}
-```
-
-### Error Responses
-
-| Status | Condition | `message` |
-|---|---|---|
-| 400 | Body fails schema validation | `"Validation failed"` (+ `errors` array) |
-| 500 | Unexpected server error | — |
-
-### Behavior detail
-
-- If the email doesn't belong to any account, or the account is already verified, **no email is sent and no new token is created** — but the client still gets the same `200` response above.
-- Otherwise, all previously unused verification tokens for that user are marked `usedAt` (invalidated) before a fresh token is issued and emailed — only one active verification token can exist per user at a time.
-
----
-
-## 11. Token Behavior Reference
+## 9. Token Behavior Reference
 
 | | Access Token | Refresh Token |
 |---|---|---|
@@ -584,7 +480,7 @@ Always this response:
 | Payload claims | `sub` (user id), `role`, `type: "access"`, `iat`, `exp` | `sub` (user id), `type: "refresh"`, `jti` (random UUID, guarantees uniqueness), `iat`, `exp` |
 | Lifetime | `JWT_ACCESS_EXPIRES_IN` env var (e.g. `15m`) | `JWT_REFRESH_EXPIRES_IN` env var (e.g. `7d`) |
 | Server-side record | None — stateless, cannot be revoked before expiry | Yes — a `Session` document storing only the SHA-256 hash of the token (`refreshTokenHash`), plus `userAgent`, `ipAddress`, `expiresAt`, `revokedAt` |
-| Where returned | `/login` (initial pair), `/refresh` (rotated pair) | Same as access token |
+| Where returned | `/register` and `/login` (initial pair), `/refresh` (rotated pair) | Same as access token |
 | Where consumed | Nowhere yet — no route validates it (see [§0](#0-read-this-before-integrating)) | `/refresh` and `/logout`, in the JSON body as `refreshToken` |
 | Revocation | Not possible before natural expiry | Revoked (session `revokedAt` set) on: use via `/refresh` (rotation), `/logout`, and — for *all* of a user's sessions at once — a successful `/reset-password` |
 
@@ -595,13 +491,13 @@ Always this response:
 
 ---
 
-## 12. HTTP Status Code Summary
+## 10. HTTP Status Code Summary
 
 | Status | Meaning in this API |
 |---|---|
 | 200 | Successful request |
-| 201 | User created (`/register` only) |
-| 400 | Request failed Zod validation, **or** an invalid/expired/used/not-found token was supplied to `/reset-password` or `/verify-email` |
+| 201 | User created and signed in (`/register` only) |
+| 400 | Request failed Zod validation, **or** an invalid/expired/used/not-found token was supplied to `/reset-password` |
 | 401 | Login credentials invalid, account inactive path aside (see 403), or any refresh-token problem in `/refresh` / `/logout` |
 | 403 | `POST /login` against a user whose `isActive` is `false` |
 | 409 | `POST /register` with an email or username already in use |
@@ -611,11 +507,12 @@ Status codes not used anywhere in the current auth implementation despite appear
 
 ---
 
-## 13. Things intentionally not implemented (do not build UI for these yet)
+## 11. Things intentionally not implemented (do not build UI for these yet)
 
 - `GET /api/v1/auth/me` — does not exist. There is no way to fetch the current user from a token alone; the frontend must persist the `user` object it received from `/login`.
 - Two-factor authentication (OTP setup/verify/disable) — model fields exist (`twoFactorEnabled`, `twoFactorSecret`) but no endpoint or login-time branch uses them.
 - Company/tenant registration (`companyName`, company creation, `companyId`) — not part of the `User` model or `/register` request.
 - Role-based authorization middleware — the `role` field exists on the user and in the access-token payload, but nothing server-side currently checks it.
 - "Log out of all devices" endpoint — only single-session logout and the side-effect-of-password-reset case exist.
+- Email verification — removed deliberately. There is no `isEmailVerified` field, no verification token model, and no endpoint; do not build a "check your inbox" screen or a verification-pending state.
 - Account statuses beyond `isActive` (e.g. `SUSPENDED`, `PENDING_VERIFICATION`) — the model only has a boolean `isActive`.

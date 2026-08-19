@@ -14,7 +14,9 @@ Base URL for every endpoint below:
 
 ## 0. Read this before integrating
 
-- **No authentication middleware exists in this codebase.** `login` and `refresh` issue a JWT access token, and a `verifyAccessToken` utility exists (`backend/src/utils/jwt.js`), but no route currently checks the `Authorization` header. Every endpoint documented below is publicly reachable — none of them require a Bearer token today. Build the frontend to send `Authorization: Bearer <accessToken>` on future protected calls anyway, since that is clearly the intended pattern, but do not expect any endpoint in this document to reject a missing/invalid token right now.
+- **Authentication middleware now exists.** `requireAuth` (`backend/src/middleware/auth.middleware.js`) verifies the `Authorization: Bearer <accessToken>` header on every route under `/api/v1/users`. The `/api/v1/auth/*` routes below remain public by design — they are how you *obtain* a token. Send `Authorization: Bearer <accessToken>` on every `/api/v1/users` call.
+- **Roles cannot be self-assigned.** `POST /register` ignores a `role` field in the body — Zod strips it and the account is created as `sales_rep`. This is deliberate: honouring a client-supplied role would let anyone hitting public signup mint an admin. Roles change only through `PATCH /api/v1/users/:id/role`, which is admin-only. See [§12](#12-roles-and-authorization).
+- **Authorization reads the database, not the token.** The access token carries a `role` claim, but `requireAuth` ignores it and loads the current user instead. A promotion, demotion, or deactivation therefore takes effect on the *next request* rather than after the ~15-minute token lifetime.
 - **Registration logs the user in.** `POST /register` returns the exact same payload as `POST /login` — `{ user, accessToken, refreshToken }` — and creates a server-side session. The frontend must **not** call `/login` after a successful `/register`; store the tokens and go straight to onboarding.
 - **There is no email verification.** No verification email is sent, there are no `/verify-email` or `/resend-verification` endpoints, and the `User` model has no `isEmailVerified` field. Register and login are the only two ways into the app.
 - **Refresh tokens are rotated on every use.** Each successful `POST /refresh` revokes the refresh token that was just used and returns a brand-new `accessToken`/`refreshToken` pair. The frontend must overwrite its stored `refreshToken` after every refresh call, or the next refresh will fail with 401.
@@ -33,6 +35,9 @@ Base URL for every endpoint below:
 | POST | `/api/v1/auth/logout` | No (refresh token in body) | Revoke a single session |
 | POST | `/api/v1/auth/forgot-password` | No | Request a password-reset email |
 | POST | `/api/v1/auth/reset-password` | No (reset token in body) | Set a new password using a reset token |
+| GET | `/api/v1/users/me` | **Bearer** | The authenticated user's own profile |
+| GET | `/api/v1/users/:id` | **Bearer** — `admin`, `manager` | Read another user's profile |
+| PATCH | `/api/v1/users/:id/role` | **Bearer** — `admin` | Change a user's role |
 
 ---
 
@@ -509,10 +514,66 @@ Status codes not used anywhere in the current auth implementation despite appear
 
 ## 11. Things intentionally not implemented (do not build UI for these yet)
 
-- `GET /api/v1/auth/me` — does not exist. There is no way to fetch the current user from a token alone; the frontend must persist the `user` object it received from `/login`.
+- `GET /api/v1/auth/me` — does not exist under `/auth`. Use **`GET /api/v1/users/me`** instead ([§12](#12-roles-and-authorization)), which returns the current user from the access token alone.
 - Two-factor authentication (OTP setup/verify/disable) — model fields exist (`twoFactorEnabled`, `twoFactorSecret`) but no endpoint or login-time branch uses them.
 - Company/tenant registration (`companyName`, company creation, `companyId`) — not part of the `User` model or `/register` request.
-- Role-based authorization middleware — the `role` field exists on the user and in the access-token payload, but nothing server-side currently checks it.
+- Per-company / tenant isolation of role checks — `requireRole` gates on the global role only; there is no notion of "admin *of company X*" yet.
 - "Log out of all devices" endpoint — only single-session logout and the side-effect-of-password-reset case exist.
 - Email verification — removed deliberately. There is no `isEmailVerified` field, no verification token model, and no endpoint; do not build a "check your inbox" screen or a verification-pending state.
 - Account statuses beyond `isActive` (e.g. `SUSPENDED`, `PENDING_VERIFICATION`) — the model only has a boolean `isActive`.
+
+---
+
+## 12. Roles and Authorization
+
+### Roles
+
+Defined once in `backend/src/constants/roles.js`; the user-model enum, the role validator and every guard read from there.
+
+| Role | Meaning |
+|---|---|
+| `sales_rep` | Default for every new account |
+| `manager` | Can read other users' profiles |
+| `admin` | Can read profiles and grant roles |
+
+### How a role is granted
+
+`role` is **never** accepted from `POST /register`. Every account starts as `sales_rep`. To change one:
+
+```
+PATCH /api/v1/users/:id/role
+Authorization: Bearer <admin accessToken>
+Content-Type: application/json
+
+{ "role": "manager" }
+```
+
+Rules enforced by this endpoint:
+
+- Caller must be authenticated (`401` otherwise) and must be an `admin` (`403` otherwise).
+- **An admin cannot change their own role** (`403`). This prevents the last admin from demoting themselves and locking role management out of the system.
+- `role` must be one of the three values above (`400` otherwise).
+- On a successful change, **all of the target's sessions are revoked** — their refresh tokens return `401 "Refresh token has been revoked"` and they must log in again.
+
+### Bootstrapping the first admin
+
+There is no admin to call the endpoint with until one exists. Create it out-of-band:
+
+```bash
+cd backend
+node scripts/promote-user.js user@example.com admin
+```
+
+The change is live immediately — because `requireAuth` reads the role from the database, an access token issued *before* the promotion already authenticates as `admin`. No re-login needed.
+
+### Authorization failure responses
+
+| Situation | Status | `message` |
+|---|---|---|
+| No `Authorization` header, or not `Bearer <token>` | 401 | `Authentication required` |
+| Malformed, expired, or wrong-type token | 401 | `Invalid or expired access token` |
+| Token valid but the user no longer exists | 401 | `Invalid access token` |
+| User exists but `isActive: false` | 403 | `Account is inactive` |
+| Authenticated, but role not permitted | 403 | `You do not have permission to perform this action` |
+
+The 403 deliberately does not name the required role — that would leak the permission model.

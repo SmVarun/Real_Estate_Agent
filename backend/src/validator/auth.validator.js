@@ -1,5 +1,15 @@
 import { z } from "zod";
 
+/*
+ * NOTE: `role` is intentionally absent.
+ *
+ * Zod strips unknown keys, so a client sending
+ * {"role": "admin"} has it silently discarded here and the
+ * account is created on DEFAULT_ROLE. This is the guard that
+ * stops anyone hitting public signup from self-assigning
+ * admin. Roles are granted only via PATCH /api/v1/users/:id/role,
+ * which is admin-only. Do not add `role` to this schema.
+ */
 const registerSchema = z.object({
   name: z
     .string()

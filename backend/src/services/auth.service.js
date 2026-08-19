@@ -19,19 +19,7 @@ import {
   getExpirationDate,
 } from "../utils/date.js";
 
-/*
- * Never expose passwordHash or the 2FA secret.
- */
-const toPublicUser = (user) => ({
-  id: user._id,
-  name: user.name,
-  email: user.email,
-  username: user.username,
-  role: user.role,
-  twoFactorEnabled: user.twoFactorEnabled,
-  lastLoginAt: user.lastLoginAt,
-  createdAt: user.createdAt,
-});
+import { toPublicUser } from "../utils/user.js";
 
 /*
  * Single entry point for handing out credentials.

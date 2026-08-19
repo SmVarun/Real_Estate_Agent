@@ -1,5 +1,7 @@
 import mongoose from "mongoose"
 
+import { ROLE_VALUES, DEFAULT_ROLE } from "../constants/roles.js"
+
 const userSchema = new mongoose.Schema(
   {
     name: {
@@ -37,8 +39,8 @@ const userSchema = new mongoose.Schema(
 
     role: {
       type: String,
-      enum: ["admin", "manager", "sales_rep"],
-      default: "sales_rep",
+      enum: ROLE_VALUES,
+      default: DEFAULT_ROLE,
     },
 
     twoFactorEnabled: {

@@ -7,7 +7,10 @@ const requiredEnvVariables = [
   "JWT_ACCESS_SECRET",
   "JWT_REFRESH_SECRET",
   "JWT_ACCESS_EXPIRES_IN",
-  "JWT_REFRESH_EXPIRES_IN"
+  "JWT_REFRESH_EXPIRES_IN",
+  "SENDER-EMAIL",
+  "APP-PASSWORD",
+  "FRONTEND_URL"
 
 ];
 
@@ -24,6 +27,9 @@ const credential = {
     jwtrefreshsecret : process.env.JWT_REFRESH_SECRET || "",
     accessExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN || "",
   refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || "",
+  senderEmail : process.env["SENDER-EMAIL"] || "",
+  appPassword : process.env["APP-PASSWORD"] || "",
+  frontendUrl : process.env.FRONTEND_URL || ""
 }
 
 export default credential

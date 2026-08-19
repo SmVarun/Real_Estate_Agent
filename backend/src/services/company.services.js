@@ -1,44 +1,52 @@
-import  Company from "../models/company.model.js";
+import Company, { SINGLETON_KEY } from "../models/company.model.js";
 
 
-const createCompany = async (companyData)=>{
-    const existingCompany = Company.findOne({
-        singletonKey : "PRIMARY_COMPANY"
-    })
+const createCompany = async (companyData) => {
+  /*
+   * Fast path: reject before hitting the unique index so the
+   * caller gets a clean 409 instead of a driver error.
+   *
+   * `singletonKey` is `select: false`, so ask for it explicitly.
+   */
+  const existingCompany = await Company.findOne({
+    singletonKey: SINGLETON_KEY,
+  }).select("_id");
 
-    // if(existingCompany){
-    //     const error = new Error("Company has already been onboarded.");
-    //     error.statusCode = 409;
-    //     throw error;
-    // }
-    try {
-        const company = await Company.create({
-            ...companyData,
-            singletonKey:"PRIMARY_COMPANY",
-            onboardingCompleted : true,
-        })
+  if (existingCompany) {
+    const error = new Error("Company has already been onboarded.");
+    error.statusCode = 409;
+    throw error;
+  }
 
-        return company ; 
-    }catch(error){
-        // protct againt the duplicate company onbaording : 
-        if (error.code === 11000){
-            const conflictError = new Error(
-                "Company onboarding has been placed "
-            )
-            conflictError.statusCode = 409;
-            throw conflictError ; 
-        }
-        throw error ; 
+  try {
+    const company = await Company.create({
+      ...companyData,
+      singletonKey: SINGLETON_KEY,
+      onboardingCompleted: true,
+    });
+
+    return company;
+  } catch (error) {
+    /*
+     * Race guard: two concurrent onboarding requests can both
+     * pass the check above, so the unique index is the real
+     * enforcement point.
+     */
+    if (error.code === 11000) {
+      const conflictError = new Error("Company has already been onboarded.");
+      conflictError.statusCode = 409;
+      throw conflictError;
     }
 
-
-}
+    throw error;
+  }
+};
 
 
  
 const getCompany = async () => {
   const company = await Company.findOne({
-    singletonKey: "PRIMARY_COMPANY",
+    singletonKey: SINGLETON_KEY,
   });
 
   if (!company) {
@@ -53,7 +61,7 @@ const getCompany = async () => {
 const updateCompany = async (companyData) => {
   const company = await Company.findOneAndUpdate(
     {
-      singletonKey: "PRIMARY_COMPANY",
+      singletonKey: SINGLETON_KEY,
     },
     {
       $set: companyData,

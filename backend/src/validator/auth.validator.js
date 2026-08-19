@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { ROLE_VALUES, normalizeRole } from "../constants/roles.js";
+
 const registerSchema = z.object({
   name: z
     .string()
@@ -28,6 +30,29 @@ const registerSchema = z.object({
     .string()
     .min(8, "Password must be at least 8 characters")
     .max(128, "Password cannot exceed 128 characters"),
+
+  /*
+   * Optional. Accepted in any casing and normalized to the
+   * canonical value. When omitted, the model default applies.
+   */
+  role: z
+    .string()
+    .trim()
+    .transform((value, ctx) => {
+      const role = normalizeRole(value);
+
+      if (!role) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Role must be one of: ${ROLE_VALUES.join(", ")}`,
+        });
+
+        return z.NEVER;
+      }
+
+      return role;
+    })
+    .optional(),
 });
 
 const loginSchema = z.object({

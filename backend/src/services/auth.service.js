@@ -24,6 +24,7 @@ const registerUser = async ({
   email,
   username,
   password,
+  role,
 }) => {
   const existingEmail = await User.findOne({ email });
 
@@ -43,11 +44,16 @@ const registerUser = async ({
 
   const passwordHash = await argon2.hash(password);
 
+  /*
+   * Only forward `role` when the caller actually supplied one,
+   * so the schema default applies otherwise.
+   */
   const user = await User.create({
     name,
     email,
     username,
     passwordHash,
+    ...(role ? { role } : {}),
   });
 
   return {

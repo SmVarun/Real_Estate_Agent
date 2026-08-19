@@ -1,5 +1,10 @@
 import mongoose from "mongoose";
-import { maxLength, minLength, required } from "zod/mini";
+
+/*
+ * Every company document carries this same key, so the unique
+ * index on it allows exactly one document to exist.
+ */
+const SINGLETON_KEY = "PRIMARY_COMPANY";
 const companySchema = mongoose.Schema({
     businessName : {
         type : String,
@@ -128,7 +133,8 @@ const companySchema = mongoose.Schema({
       required: true,
       unique: true,
       immutable: true,
-      default: "PRIMARY_COMPANY",
+      default: SINGLETON_KEY,
+      enum: [SINGLETON_KEY],
       select: false,
     },
   
@@ -140,4 +146,21 @@ const companySchema = mongoose.Schema({
 
 
 const Company = mongoose.model("Company",companySchema)
+
+/*
+ * The singleton guarantee rests entirely on the unique index.
+ * If duplicate company documents already exist in the database,
+ * the background index build fails silently and onboarding stops
+ * being protected, so surface that instead of swallowing it.
+ */
+Company.on("index", (error) => {
+  if (error) {
+    console.error(
+      "Failed to build the Company singleton index — duplicate companies may exist:",
+      error.message
+    );
+  }
+});
+
+export { SINGLETON_KEY };
 export default Company ;

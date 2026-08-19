@@ -20,6 +20,13 @@ All Company APIs require:
 1. A valid JWT access token
 2. The authenticated user to have the `ADMIN` role
 
+> The canonical role value stored in MongoDB is `admin` (lowercase).
+>
+> `/register` never accepts a `role` — that would let anyone self-assign
+> admin. Every account starts on `sales_rep`. Grant admin with either
+> `PATCH /api/v1/users/:id/role` (admin-only) or, for the first admin,
+> `node scripts/promote-user.js <email> admin`.
+
 ---
 
 # Authentication
@@ -273,8 +280,7 @@ Missing/Invalid Token
 401 Unauthorized
 {
   "success": false,
-  "message": "Authentication required",
-  "data": null
+  "message": "Authentication required"
 }
 
 or the corresponding existing authentication error response.
@@ -284,8 +290,7 @@ Non-Admin User
 403 Forbidden
 {
   "success": false,
-  "message": "Admin access required",
-  "data": null
+  "message": "You do not have permission to perform this action"
 }
 Company Data Rules
 

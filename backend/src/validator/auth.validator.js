@@ -1,7 +1,15 @@
 import { z } from "zod";
 
-import { ROLE_VALUES, normalizeRole } from "../constants/roles.js";
-
+/*
+ * NOTE: `role` is intentionally absent.
+ *
+ * Zod strips unknown keys, so a client sending
+ * {"role": "admin"} has it silently discarded here and the
+ * account is created on DEFAULT_ROLE. This is the guard that
+ * stops anyone hitting public signup from self-assigning
+ * admin. Roles are granted only via PATCH /api/v1/users/:id/role,
+ * which is admin-only. Do not add `role` to this schema.
+ */
 const registerSchema = z.object({
   name: z
     .string()
@@ -30,29 +38,6 @@ const registerSchema = z.object({
     .string()
     .min(8, "Password must be at least 8 characters")
     .max(128, "Password cannot exceed 128 characters"),
-
-  /*
-   * Optional. Accepted in any casing and normalized to the
-   * canonical value. When omitted, the model default applies.
-   */
-  role: z
-    .string()
-    .trim()
-    .transform((value, ctx) => {
-      const role = normalizeRole(value);
-
-      if (!role) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Role must be one of: ${ROLE_VALUES.join(", ")}`,
-        });
-
-        return z.NEVER;
-      }
-
-      return role;
-    })
-    .optional(),
 });
 
 const loginSchema = z.object({
@@ -90,26 +75,10 @@ const resetPasswordSchema = z.object({
   password: registerSchema.shape.password,
 });
 
-const resendVerificationSchema = z.object({
-  email: z
-    .string()
-    .trim()
-    .email("Invalid email address")
-    .transform((value) => value.toLowerCase()),
-});
-
-const verifyEmailQuerySchema = z.object({
-  token: z
-    .string()
-    .min(1, "Verification token is required"),
-});
-
 export {
   registerSchema,
   loginSchema,
   refreshSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
-  resendVerificationSchema,
-  verifyEmailQuerySchema,
 }

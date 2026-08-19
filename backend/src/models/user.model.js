@@ -1,6 +1,6 @@
 import mongoose from "mongoose"
 
-import { ROLE_VALUES, DEFAULT_ROLE } from "../constants/roles.js";
+import { ROLE_VALUES, DEFAULT_ROLE } from "../constants/roles.js"
 
 const userSchema = new mongoose.Schema(
   {
@@ -41,11 +41,6 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: ROLE_VALUES,
       default: DEFAULT_ROLE,
-    },
-
-    isEmailVerified: {
-      type: Boolean,
-      default: false,
     },
 
     twoFactorEnabled: {

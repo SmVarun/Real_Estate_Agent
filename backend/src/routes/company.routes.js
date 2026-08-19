@@ -6,13 +6,18 @@ import {
   updateCompanyProfile,
 } from "../controllers/company.controller.js";
 
-import authenticate from "../middlewares/auth.middleware.js";
-import { requireAdmin } from "../middlewares/authorize.middleware.js";
+import { requireAuth } from "../middleware/auth.middleware.js";
+import { requireRole } from "../middleware/role.middleware.js";
+import { ROLES } from "../constants/roles.js";
 
 const companyRoutes = express.Router();
 
-companyRoutes.use(authenticate);
-companyRoutes.use(requireAdmin);
+/*
+ * The company profile is org-wide configuration, so every
+ * route below is admin-only.
+ */
+companyRoutes.use(requireAuth);
+companyRoutes.use(requireRole(ROLES.ADMIN));
 
 companyRoutes.post("/onboarding", onboardCompany);
 companyRoutes.get("/", getCompanyProfile);

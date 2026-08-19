@@ -19,12 +19,76 @@ import {
   getExpirationDate,
 } from "../utils/date.js";
 
+import { toPublicUser } from "../utils/user.js";
+
+/*
+ * Single entry point for handing out credentials.
+ *
+ * Register and login both go through here, so a freshly
+ * registered user is authenticated exactly like one who
+ * just signed in and can walk straight into onboarding.
+ */
+const issueSession = async ({ user, userAgent, ipAddress }) => {
+  const accessToken = await generateAccessToken(
+    {
+      sub: user._id.toString(),
+      role: user.role,
+      type: "access",
+    },
+    credential.jwtaccesssecret,
+    credential.accessExpiresIn
+  );
+
+  const refreshToken = await generateRefreshToken(
+    {
+      sub: user._id.toString(),
+      type: "refresh",
+    },
+    credential.jwtrefreshsecret,
+    credential.refreshExpiresIn
+  );
+
+  /*
+   * Calculate refresh-token/session expiry
+   */
+  const expiresAt = getExpirationDate(
+    credential.refreshExpiresIn
+  );
+
+  /*
+   * Create server-side session.
+   *
+   * Only the HASH of the refresh token
+   * will be stored in MongoDB.
+   */
+  await createSession({
+    userId: user._id,
+    refreshToken,
+    userAgent,
+    ipAddress,
+    expiresAt,
+  });
+
+  /*
+   * Issuing a session counts as a login.
+   */
+  user.lastLoginAt = new Date();
+  await user.save();
+
+  return {
+    user: toPublicUser(user),
+    accessToken,
+    refreshToken,
+  };
+};
+
 const registerUser = async ({
   name,
   email,
   username,
   password,
-  role,
+  userAgent,
+  ipAddress,
 }) => {
   const existingEmail = await User.findOne({ email });
 
@@ -44,27 +108,21 @@ const registerUser = async ({
 
   const passwordHash = await argon2.hash(password);
 
-  /*
-   * Only forward `role` when the caller actually supplied one,
-   * so the schema default applies otherwise.
-   */
   const user = await User.create({
     name,
     email,
     username,
     passwordHash,
-    ...(role ? { role } : {}),
   });
 
-  return {
-    id: user._id,
-    name: user.name,
-    email: user.email,
-    username: user.username,
-    role: user.role,
-    isEmailVerified: user.isEmailVerified,
-    createdAt: user.createdAt,
-  };
+  /*
+   * Log the new user straight in — no second /login round trip.
+   */
+  return issueSession({
+    user,
+    userAgent,
+    ipAddress,
+  });
 };
 
 const loginUser = async ({
@@ -98,76 +156,11 @@ const loginUser = async ({
     throw error;
   }
 
-  /*
-   * Generate access token
-   */
-  const accessToken = await generateAccessToken(
-    {
-      sub: user._id.toString(),
-      role: user.role,
-      type: "access",
-    },
-    credential.jwtaccesssecret,
-    credential.accessExpiresIn
-  );
-
-  /*
-   * Generate refresh token
-   */
-  const refreshToken = await generateRefreshToken(
-    {
-      sub: user._id.toString(),
-      type: "refresh",
-    },
-    credential.jwtrefreshsecret,
-    credential.refreshExpiresIn
-  );
-
-  /*
-   * Calculate refresh-token/session expiry
-   */
-  const expiresAt = getExpirationDate(
-    credential.refreshExpiresIn
-  );
-
-  /*
-   * Create server-side session.
-   *
-   * Only the HASH of the refresh token
-   * will be stored in MongoDB.
-   */
-  await createSession({
-    userId: user._id,
-    refreshToken,
+  return issueSession({
+    user,
     userAgent,
     ipAddress,
-    expiresAt,
   });
-
-  /*
-   * Update last login
-   */
-  user.lastLoginAt = new Date();
-  await user.save();
-
-  /*
-   * Never return passwordHash or 2FA secret.
-   */
-  return {
-    user: {
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      username: user.username,
-      role: user.role,
-      isEmailVerified: user.isEmailVerified,
-      twoFactorEnabled: user.twoFactorEnabled,
-      lastLoginAt: user.lastLoginAt,
-    },
-
-    accessToken,
-    refreshToken,
-  };
 };
 
 const unauthorizedError = (message) => {

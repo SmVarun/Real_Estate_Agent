@@ -1,36 +1,25 @@
 /*
- * Canonical role values.
+ * Single source of truth for roles.
  *
- * These are the exact strings persisted in MongoDB, so they must
- * not be renamed without a data migration.
+ * The user model enum, the role validator, and every
+ * requireRole() guard read from here so a new role can
+ * never be half-added.
  */
-const ROLES = {
-  ADMIN: "ADMIN",
+const ROLES = Object.freeze({
+  ADMIN: "admin",
   MANAGER: "manager",
   SALES_REP: "sales_rep",
-};
+});
 
-const ROLE_VALUES = Object.values(ROLES);
-
-const DEFAULT_ROLE = ROLES.SALES_REP;
+const ROLE_VALUES = Object.freeze(Object.values(ROLES));
 
 /*
- * Accept a role from a client in any casing ("admin", "ADMIN",
- * "Sales_Rep", ...) and map it back to the canonical value.
+ * The role every new account starts on.
  *
- * Returns null when the value is not a known role, so callers
- * can reject it.
+ * Registration never accepts a client-supplied role —
+ * that would let anyone self-assign admin — so every
+ * account begins here and is promoted deliberately.
  */
-const normalizeRole = (value) => {
-  if (typeof value !== "string") {
-    return null;
-  }
+const DEFAULT_ROLE = ROLES.SALES_REP;
 
-  const candidate = value.trim().toLowerCase();
-
-  return (
-    ROLE_VALUES.find((role) => role.toLowerCase() === candidate) || null
-  );
-};
-
-export { ROLES, ROLE_VALUES, DEFAULT_ROLE, normalizeRole };
+export { ROLES, ROLE_VALUES, DEFAULT_ROLE };

@@ -1,13 +1,32 @@
 import express from "express"
+import cookieParser from "cookie-parser"
+import cors from "cors"
 import { ZodError } from "zod"
 
+import credential from "./config/config.js"
 import authRouter from "./routes/auth.routes.js"
 import userRouter from "./routes/user.routes.js"
 
 const app = express()
 
+/*
+ * Authentication rides on cookies, so the browser only attaches
+ * them when the response names an explicit origin and allows
+ * credentials — "*" is invalid in that combination.
+ */
+app.use(cors({
+  origin: credential.frontendUrl,
+  credentials: true,
+}))
+
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
+
+/*
+ * Populates req.cookies, which requireAuth and /auth/refresh
+ * read the access and refresh tokens from.
+ */
+app.use(cookieParser())
 
 app.get("/health", (req, res) => {
   res.status(200).json({

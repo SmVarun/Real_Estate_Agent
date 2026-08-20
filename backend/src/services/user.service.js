@@ -1,6 +1,5 @@
 import User from "../models/user.model.js";
 import { toPublicUser } from "../utils/user.js";
-import { revokeAllUserSessions } from "./session.service.js";
 
 const notFoundError = (message) => {
   const error = new Error(message);
@@ -33,10 +32,6 @@ const updateUserRole = async ({ actor, userId, role }) => {
     throw notFoundError("User not found");
   }
 
-  /*
-   * No-op early so an unchanged role does not needlessly
-   * revoke the target's sessions below.
-   */
   if (user.role === role) {
     return toPublicUser(user);
   }
@@ -46,13 +41,10 @@ const updateUserRole = async ({ actor, userId, role }) => {
 
   /*
    * requireAuth reads the role from the database on every
-   * request, so the new role is already in force. Sessions are
-   * revoked anyway on a DEMOTION-capable change: forcing a
-   * fresh login re-issues tokens whose role claim matches
-   * reality, so anything reading the claim cannot go stale.
+   * request, so the new role is in force immediately — the
+   * stale role claim in the target's existing access token is
+   * never used for authorization.
    */
-  await revokeAllUserSessions(user._id);
-
   return toPublicUser(user);
 };
 

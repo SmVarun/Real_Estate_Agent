@@ -1,0 +1,1 @@
+node scripts/promote-user.js vishnu12@gmail.com admin 

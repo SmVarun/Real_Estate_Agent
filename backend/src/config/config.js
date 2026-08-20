@@ -10,7 +10,12 @@ const requiredEnvVariables = [
   "JWT_REFRESH_EXPIRES_IN",
   "SENDER-EMAIL",
   "APP-PASSWORD",
-  "FRONTEND_URL"
+  "FRONTEND_URL",
+  "AWS_S3_BUCKET_NAME",
+  "AWS_REGION",
+  "AWS_BUCKET_ACCESS_KEY",
+  "AWS_BUCKET_SECRET_KEY"
+  
 
 ];
 
@@ -29,7 +34,13 @@ const credential = {
   refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || "",
   senderEmail : process.env["SENDER-EMAIL"] || "",
   appPassword : process.env["APP-PASSWORD"] || "",
-  frontendUrl : process.env.FRONTEND_URL || ""
+  frontendUrl : process.env.FRONTEND_URL || "",
+  awsbucketname : process.env.AWS_S3_BUCKET_NAME || "",
+  awsregion : process.env.AWS_REGION || "",
+  awsbucketaccesskey : process.env.AWS_BUCKET_ACCESS_KEY || "",
+  awsbucketsecretkey : process.env.AWS_BUCKET_SECRET_KEY || ""
+
+
 }
 
 export default credential

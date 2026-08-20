@@ -1,6 +1,7 @@
 import User from "../models/user.model.js";
 import credential from "../config/config.js";
 import { verifyAccessToken } from "../utils/jwt.js";
+import { ACCESS_TOKEN_COOKIE } from "../utils/cookie.js";
 
 const unauthorizedError = (message) => {
   const error = new Error(message);
@@ -9,30 +10,8 @@ const unauthorizedError = (message) => {
 };
 
 /*
- * Pull the raw JWT out of "Authorization: Bearer <token>".
- *
- * Returns null rather than throwing so the caller decides
- * whether a missing token is fatal (requireAuth) or fine
- * (optionalAuth).
- */
-const extractBearerToken = (req) => {
-  const header = req.get("authorization");
-
-  if (!header) {
-    return null;
-  }
-
-  const [scheme, token] = header.split(" ");
-
-  if (!scheme || scheme.toLowerCase() !== "bearer" || !token) {
-    return null;
-  }
-
-  return token.trim();
-};
-
-/*
- * Verify the access token and attach the CURRENT user.
+ * Verify the access token from its cookie and attach the
+ * CURRENT user.
  *
  * The token carries a role claim, but we deliberately do not
  * trust it for authorization. Access tokens live ~15 minutes,
@@ -43,7 +22,7 @@ const extractBearerToken = (req) => {
  */
 const requireAuth = async (req, res, next) => {
   try {
-    const token = extractBearerToken(req);
+    const token = req.cookies?.[ACCESS_TOKEN_COOKIE];
 
     if (!token) {
       throw unauthorizedError("Authentication required");
@@ -65,7 +44,7 @@ const requireAuth = async (req, res, next) => {
      * cannot verify here — but check the type anyway so the
      * intent of the token is always explicit.
      */
-    if (payload.type !== "access") {
+    if (payload.type !== "access" || !payload.sub) {
       throw unauthorizedError("Invalid access token");
     }
 
@@ -93,4 +72,4 @@ const requireAuth = async (req, res, next) => {
   }
 };
 
-export { requireAuth, extractBearerToken };
+export { requireAuth };

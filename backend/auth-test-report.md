@@ -1,5 +1,18 @@
 # Authentication E2E Test Report
 
+> **⚠️ SUPERSEDED — historical record, do not use as a behaviour reference.**
+>
+> This report was produced on 2026-08-17 against the **bearer-token / server-side
+> session** implementation. Authentication has since moved to httpOnly cookies
+> with no session store, so much of what is verified below no longer describes
+> the system: tokens are no longer returned in response bodies, `/refresh` and
+> `/logout` no longer take a body, refresh tokens are no longer rotated, and the
+> `Session` collection no longer exists.
+>
+> It is kept as a record of what was tested and when. For current behaviour see
+> [`docs/auth-api.md`](docs/auth-api.md). This suite needs a re-run against the
+> cookie flow.
+
 ## Environment
 
 | Item | Value |

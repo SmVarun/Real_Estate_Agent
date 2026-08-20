@@ -2,7 +2,7 @@
 
 **API Version:** v1  
 **Base URL:** `http://localhost:3000/api/v1`  
-**Authentication:** JWT Access Token  
+**Authentication:** httpOnly `accessToken` cookie  
 **Authorization:** ADMIN only
 
 ---
@@ -17,7 +17,7 @@ The Company profile is created through the onboarding endpoint and becomes the *
 
 All Company APIs require:
 
-1. A valid JWT access token
+1. A valid `accessToken` cookie
 2. The authenticated user to have the `ADMIN` role
 
 > The canonical role value stored in MongoDB is `admin` (lowercase).
@@ -31,10 +31,18 @@ All Company APIs require:
 
 # Authentication
 
-All Company endpoints require the access token in the `Authorization` header.
+Authentication is cookie-based. The browser sends the `accessToken` cookie
+automatically, provided the request opts into credentials:
 
-```http
-Authorization: Bearer <ACCESS_TOKEN>
+```js
+fetch("/api/v1/company", { credentials: "include" })   // or axios withCredentials
+```
+
+There is no `Authorization` header in this API. If a request arrives without the
+cookie the response is `401`, and a cross-origin call made *without* credentials
+enabled looks exactly like that — the browser simply omits the cookie. See
+`auth-api.md` for the full flow.
+
 -------------------------------------------------------------------------------------
 
 Authorization
@@ -65,7 +73,7 @@ Request
 POST /api/v1/company/onboarding
 Headers
 Content-Type: application/json
-Authorization: Bearer <ADMIN_ACCESS_TOKEN>
+Cookie: accessToken=<ADMIN_ACCESS_TOKEN>
 Request Body
 {
   "businessName": "Tech Yantra Solutions",
@@ -169,7 +177,7 @@ Retrieves the single company profile.
 Request
 GET /api/v1/company
 Headers
-Authorization: Bearer <ADMIN_ACCESS_TOKEN>
+Cookie: accessToken=<ADMIN_ACCESS_TOKEN>
 
 No request body is required.
 
@@ -226,7 +234,7 @@ Request
 PATCH /api/v1/company
 Headers
 Content-Type: application/json
-Authorization: Bearer <ADMIN_ACCESS_TOKEN>
+Cookie: accessToken=<ADMIN_ACCESS_TOKEN>
 
 Only fields that need to be changed need to be included.
 
@@ -345,7 +353,7 @@ Therefore, even if a normal user manually calls the endpoint, the backend reject
 
 Frontend Integration Checklist
 [ ] Login as ADMIN
-[ ] Store/manage access token
+[ ] Enable credentials on the HTTP client (nothing to store — cookies are httpOnly)
 [ ] Call GET /api/v1/company
 [ ] Handle 404 when company is not onboarded
 [ ] Show company onboarding form
@@ -364,7 +372,7 @@ Postman Examples
 Onboard
 curl -X POST http://localhost:3000/api/v1/company/onboarding \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <ADMIN_ACCESS_TOKEN>" \
+  -b "accessToken=<ADMIN_ACCESS_TOKEN>" \
   -d '{
     "businessName": "Tech Yantra Solutions",
     "legalName": "Tech Yantra Solutions Private Limited",
@@ -385,17 +393,17 @@ curl -X POST http://localhost:3000/api/v1/company/onboarding \
   }'
 Get Company
 curl http://localhost:3000/api/v1/company \
-  -H "Authorization: Bearer <ADMIN_ACCESS_TOKEN>"
+  -b "accessToken=<ADMIN_ACCESS_TOKEN>"
 Update Company
 curl -X PATCH http://localhost:3000/api/v1/company \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <ADMIN_ACCESS_TOKEN>" \
+  -b "accessToken=<ADMIN_ACCESS_TOKEN>" \
   -d '{
     "description": "Updated company description."
   }'
 Security Notes
-Use the access token, not the refresh token, for Company APIs.
-Never expose access or refresh tokens in logs.
+Company APIs read the accessToken cookie; the refreshToken cookie is used only by POST /api/v1/auth/refresh.
+Both cookies are httpOnly, so client script cannot read them — do not add code that tries. Never log token values server-side.
 Company APIs are ADMIN-only.
 The frontend must not attempt to control onboardingCompleted.
 The frontend must not send singletonKey.

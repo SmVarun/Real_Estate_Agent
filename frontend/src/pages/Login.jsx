@@ -8,10 +8,37 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(true);
 
-  function handleSubmit(e) {
-    e.preventDefault();
+  async function handleSubmit(e) {
+  e.preventDefault();
+
+  try {
+    const response = await fetch("http://localhost:3000/api/v1/auth/login", {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email,
+        password,
+      }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      alert(result.message || "Login failed");
+      return;
+    }
+
+    console.log("Login successful:", result);
+
     navigate("/dashboard");
+  } catch (error) {
+    console.error("Login error:", error);
+    alert("Cannot connect to the backend");
   }
+}
 
   return (
     <div className="flex min-h-screen bg-surface">

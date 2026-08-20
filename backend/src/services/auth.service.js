@@ -9,27 +9,16 @@ import {
   verifyRefreshToken,
 } from "../utils/jwt.js";
 
-import {
-  createSession,
-  findSessionByRefreshToken,
-  revokeSession,
-} from "./session.service.js";
-
-import {
-  getExpirationDate,
-} from "../utils/date.js";
-
 import { toPublicUser } from "../utils/user.js";
 
-/*
- * Single entry point for handing out credentials.
- *
- * Register and login both go through here, so a freshly
- * registered user is authenticated exactly like one who
- * just signed in and can walk straight into onboarding.
- */
-const issueSession = async ({ user, userAgent, ipAddress }) => {
-  const accessToken = await generateAccessToken(
+const unauthorizedError = (message) => {
+  const error = new Error(message);
+  error.statusCode = 401;
+  return error;
+};
+
+const signAccessToken = (user) => {
+  return generateAccessToken(
     {
       sub: user._id.toString(),
       role: user.role,
@@ -38,8 +27,10 @@ const issueSession = async ({ user, userAgent, ipAddress }) => {
     credential.jwtaccesssecret,
     credential.accessExpiresIn
   );
+};
 
-  const refreshToken = await generateRefreshToken(
+const signRefreshToken = (user) => {
+  return generateRefreshToken(
     {
       sub: user._id.toString(),
       type: "refresh",
@@ -47,30 +38,24 @@ const issueSession = async ({ user, userAgent, ipAddress }) => {
     credential.jwtrefreshsecret,
     credential.refreshExpiresIn
   );
+};
+
+/*
+ * Single entry point for handing out credentials.
+ *
+ * Register and login both go through here, so a freshly
+ * registered user is authenticated exactly like one who
+ * just signed in and can walk straight into onboarding.
+ *
+ * Nothing is persisted: both tokens are self-contained JWTs,
+ * so authentication stays stateless.
+ */
+const issueTokens = async (user) => {
+  const accessToken = await signAccessToken(user);
+  const refreshToken = await signRefreshToken(user);
 
   /*
-   * Calculate refresh-token/session expiry
-   */
-  const expiresAt = getExpirationDate(
-    credential.refreshExpiresIn
-  );
-
-  /*
-   * Create server-side session.
-   *
-   * Only the HASH of the refresh token
-   * will be stored in MongoDB.
-   */
-  await createSession({
-    userId: user._id,
-    refreshToken,
-    userAgent,
-    ipAddress,
-    expiresAt,
-  });
-
-  /*
-   * Issuing a session counts as a login.
+   * Issuing tokens counts as a login.
    */
   user.lastLoginAt = new Date();
   await user.save();
@@ -82,14 +67,7 @@ const issueSession = async ({ user, userAgent, ipAddress }) => {
   };
 };
 
-const registerUser = async ({
-  name,
-  email,
-  username,
-  password,
-  userAgent,
-  ipAddress,
-}) => {
+const registerUser = async ({ name, email, username, password }) => {
   const existingEmail = await User.findOne({ email });
 
   if (existingEmail) {
@@ -118,19 +96,10 @@ const registerUser = async ({
   /*
    * Log the new user straight in — no second /login round trip.
    */
-  return issueSession({
-    user,
-    userAgent,
-    ipAddress,
-  });
+  return issueTokens(user);
 };
 
-const loginUser = async ({
-  email,
-  password,
-  userAgent,
-  ipAddress,
-}) => {
+const loginUser = async ({ email, password }) => {
   const user = await User.findOne({ email }).select("+passwordHash");
 
   if (!user) {
@@ -156,44 +125,22 @@ const loginUser = async ({
     throw error;
   }
 
-  return issueSession({
-    user,
-    userAgent,
-    ipAddress,
-  });
+  return issueTokens(user);
 };
 
-const unauthorizedError = (message) => {
-  const error = new Error(message);
-  error.statusCode = 401;
-  return error;
-};
-
-const refreshUserSession = async ({
-  refreshToken,
-  userAgent,
-  ipAddress,
-}) => {
-  /*
-   * Hash the incoming refresh token and find its session.
-   */
-  const session = await findSessionByRefreshToken(refreshToken);
-
-  if (!session) {
-    throw unauthorizedError("Invalid refresh token");
+/*
+ * Exchange a valid refresh token for a fresh access token.
+ *
+ * The refresh token is NOT rotated and never touches the
+ * database — verifying its signature is the whole check. The
+ * user is still loaded so a deleted or deactivated account
+ * cannot keep minting access tokens.
+ */
+const refreshAccessToken = async (refreshToken) => {
+  if (!refreshToken) {
+    throw unauthorizedError("Refresh token is required");
   }
 
-  if (session.revokedAt) {
-    throw unauthorizedError("Refresh token has been revoked");
-  }
-
-  if (session.expiresAt < new Date()) {
-    throw unauthorizedError("Refresh token has expired");
-  }
-
-  /*
-   * Verify the refresh JWT signature/expiry/type.
-   */
   let payload;
 
   try {
@@ -202,90 +149,26 @@ const refreshUserSession = async ({
       credential.jwtrefreshsecret
     );
   } catch (error) {
+    throw unauthorizedError("Invalid or expired refresh token");
+  }
+
+  if (payload.type !== "refresh" || !payload.sub) {
     throw unauthorizedError("Invalid refresh token");
   }
 
-  if (payload.type !== "refresh") {
-    throw unauthorizedError("Invalid refresh token");
-  }
-
-  if (payload.sub !== session.userId.toString()) {
-    throw unauthorizedError("Invalid refresh token");
-  }
-
-  const user = await User.findById(session.userId);
+  const user = await User.findById(payload.sub);
 
   if (!user || !user.isActive) {
     throw unauthorizedError("Invalid refresh token");
   }
 
-  /*
-   * Generate new token pair
-   */
-  const accessToken = await generateAccessToken(
-    {
-      sub: user._id.toString(),
-      role: user.role,
-      type: "access",
-    },
-    credential.jwtaccesssecret,
-    credential.accessExpiresIn
-  );
+  const accessToken = await signAccessToken(user);
 
-  const newRefreshToken = await generateRefreshToken(
-    {
-      sub: user._id.toString(),
-      type: "refresh",
-    },
-    credential.jwtrefreshsecret,
-    credential.refreshExpiresIn
-  );
-
-  const expiresAt = getExpirationDate(
-    credential.refreshExpiresIn
-  );
-
-  /*
-   * Rotate: revoke the old session so the old refresh token
-   * can never be used again, then create a new session for
-   * the new refresh token.
-   */
-  await revokeSession(session._id);
-
-  await createSession({
-    userId: user._id,
-    refreshToken: newRefreshToken,
-    userAgent,
-    ipAddress,
-    expiresAt,
-  });
-
-  return {
-    accessToken,
-    refreshToken: newRefreshToken,
-  };
-};
-
-const logoutUser = async ({ refreshToken }) => {
-  /*
-   * Hash the incoming refresh token and find its session.
-   */
-  const session = await findSessionByRefreshToken(refreshToken);
-
-  if (!session) {
-    throw unauthorizedError("Invalid refresh token");
-  }
-
-  if (session.revokedAt) {
-    throw unauthorizedError("Refresh token has been revoked");
-  }
-
-  await revokeSession(session._id);
+  return { accessToken };
 };
 
 export {
   registerUser,
   loginUser,
-  refreshUserSession,
-  logoutUser,
+  refreshAccessToken,
 };

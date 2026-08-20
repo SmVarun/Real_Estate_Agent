@@ -22,6 +22,7 @@ for (const variable of requiredEnvVariables) {
 
 const credential = {
     port : process.env.PORT,
+    nodeEnv : process.env.NODE_ENV || "development",
     mongodburl : process.env.MONGODB_URL ||"" ,
     jwtaccesssecret : process.env.JWT_ACCESS_SECRET || "",
     jwtrefreshsecret : process.env.JWT_REFRESH_SECRET || "",

@@ -1,4 +1,10 @@
-const getExpirationDate = (duration) => {
+/*
+ * Turn a JWT-style duration ("15m", "7d") into milliseconds.
+ *
+ * The same strings configure token expiry and cookie maxAge,
+ * so both read from this one parser and can never drift apart.
+ */
+const getDurationMs = (duration) => {
   const match = duration.match(/^(\d+)([smhd])$/);
 
   if (!match) {
@@ -15,11 +21,14 @@ const getExpirationDate = (duration) => {
     d: 24 * 60 * 60 * 1000,
   };
 
-  return new Date(
-    Date.now() + value * multipliers[unit]
-  );
+  return value * multipliers[unit];
+};
+
+const getExpirationDate = (duration) => {
+  return new Date(Date.now() + getDurationMs(duration));
 };
 
 export {
+  getDurationMs,
   getExpirationDate,
 };

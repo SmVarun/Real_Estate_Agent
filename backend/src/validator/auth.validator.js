@@ -53,12 +53,6 @@ const loginSchema = z.object({
     .max(128, "Password cannot exceed 128 characters"),
 });
 
-const refreshSchema = z.object({
-  refreshToken: z
-    .string()
-    .min(1, "Refresh token is required"),
-});
-
 const forgotPasswordSchema = z.object({
   email: z
     .string()
@@ -78,7 +72,6 @@ const resetPasswordSchema = z.object({
 export {
   registerSchema,
   loginSchema,
-  refreshSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
 }

@@ -6,7 +6,6 @@ import PasswordResetToken from "../models/password-reset-token.model.js";
 import credential from "../config/config.js";
 
 import { sendEmail } from "./email.service.js";
-import { revokeAllUserSessions } from "./session.service.js";
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 
@@ -83,8 +82,6 @@ const resetPassword = async ({ token, password }) => {
 
   resetToken.usedAt = new Date();
   await resetToken.save();
-
-  await revokeAllUserSessions(user._id);
 };
 
 export {

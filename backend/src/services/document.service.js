@@ -74,3 +74,57 @@ export const uploadDocument = async ({ file, userId }) => {
     throw error;
   }
 };
+
+
+
+// for getting all the document 
+export const getDocuments = async () => {
+  return Document.find()
+    .sort({ createdAt: -1 })
+    .populate("uploadedBy", "username email role");
+};
+
+// for getting one document 
+
+export const getDocumentById = async (documentId) => {
+  const document = await Document.findById(documentId).populate(
+    "uploadedBy",
+    "username email role"
+  );
+
+  if (!document) {
+    const error = new Error("Document not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return document;
+};
+
+// for the deletion of the document 
+
+
+export const deleteDocument = async (documentId) => {
+  const document = await Document.findById(documentId);
+
+  if (!document) {
+    const error = new Error("Document not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  try {
+    await s3Client.send(
+      new DeleteObjectCommand({
+        Bucket: document.s3Bucket,
+        Key: document.s3Key,
+      })
+    );
+
+    await Document.findByIdAndDelete(documentId);
+
+    return document;
+  } catch (error) {
+    throw error;
+  }
+};

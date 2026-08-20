@@ -1,0 +1,77 @@
+Company becomes the Source of Truth
+
+Everything referring to the business should ultimately use this Company record:
+
+Company
+├── Legal/business name
+├── Display name
+├── Logo
+├── Industry
+├── Description
+├── Website
+├── Email
+├── Phone
+├── Address
+├── Social links
+├── Business details
+├── Products
+└── Settings
+
+
+Flow is 
+
+User-login
+|
+|
+Onboard the Company    ** DONE BY ONLY ADMIN 
+|
+|
+CRM IS APPEARED
+
+
+OVER-ALL 
+User Login
+    ↓
+Check Company
+    ↓
+Company exists?
+ ┌──────┴──────┐
+ NO            YES
+ ↓              ↓
+Onboarding    Dashboard
+ ↓
+Fill company details
+ ↓
+Validate
+ ↓
+Create SINGLE Company document
+ ↓
+Company becomes Source of Truth
+ ↓
+Dashboard
+
+-------------------------------------------
+
+Todays Wrk :
+
+☐ Company model
+☐ Singleton company protection
+☐ Company onboarding validation
+☐ Company onboarding service
+☐ Company onboarding controller
+☐ Company onboarding route
+☐ Get company profile
+☐ Update company profile
+☐ Onboarding status
+☐ Authentication protection
+☐ Error handling
+☐ API response standardization
+☐ Tests
+☐ Postman testing
+☐ Frontend API documentation
+
+--------------------------------------
+API :
+POST  /api/v1/company/onboarding
+GET   /api/v1/company
+PATCH /api/v1/company

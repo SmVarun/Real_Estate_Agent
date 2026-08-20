@@ -6,7 +6,8 @@ import { ZodError } from "zod"
 import credential from "./config/config.js"
 import authRouter from "./routes/auth.routes.js"
 import userRouter from "./routes/user.routes.js"
-
+import companyRouter from "./routes/company.routes.js"
+import documentRoutes from "./routes/document.routes.js";
 const app = express()
 
 /*
@@ -37,7 +38,8 @@ app.get("/health", (req, res) => {
 
 app.use("/api/v1/auth", authRouter)
 app.use("/api/v1/users", userRouter)
-
+app.use("/api/v1/company", companyRouter)
+app.use("/api/v1/documents", documentRoutes);
 app.use("/api/v1", (req, res) => {
   res.status(404).json({
     success: false,

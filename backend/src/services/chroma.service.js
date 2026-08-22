@@ -5,7 +5,12 @@ const collectionName =
 
 let collection;
 
-const getCollection = async () => {
+/*
+ * Exported so the retrieval side (rag-retrieval.service.js) reads the
+ * SAME collection handle the ingestion side writes to — one client,
+ * one collection name, no second source of truth.
+ */
+export const getCollection = async () => {
   if (!collection) {
     // embeddingFunction: null is required. Without it the client tries to
     // instantiate DefaultEmbeddingFunction (a separate @chroma-core/default-embed

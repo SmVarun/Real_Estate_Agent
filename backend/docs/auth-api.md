@@ -1,6 +1,6 @@
 # Authentication API — Frontend Integration Guide
 
-This document describes the authentication API **exactly as currently implemented** in the backend (`backend/src/`). It is generated from the real routes, controllers, services, validators, and models in this repository — not from the earlier architecture drafts in `docs/authentication.md` / `docs/api.md`, which describe a larger *planned* system (companies, 2FA, `GET /auth/me`, role-based tenant isolation, etc.) that has **not** been built yet. Where the real implementation diverges from those drafts, this document calls it out explicitly.
+This document describes the authentication API **exactly as currently implemented** in the backend (`backend/src/`). It is generated from the real routes, controllers, services, validators, and models in this repository — not from the earlier architecture drafts in `docs/authentication.md` / `docs/api.md`, which describe a larger *planned* system (2FA, `GET /auth/me`, per-tenant isolation, etc.) that has **not** been built yet. Where the real implementation diverges from those drafts, this document calls it out explicitly.
 
 Base URL for every endpoint below:
 
@@ -8,19 +8,24 @@ Base URL for every endpoint below:
 /api/v1/auth
 ```
 
-(Mounted in `backend/src/app.js` via `app.use("/api/v1/auth", router)`.)
+(Mounted in `backend/src/app.js` via `app.use("/api/v1/auth", authRouter)`.)
 
 ---
 
 ## 0. Read this before integrating
 
-- **Authentication middleware now exists.** `requireAuth` (`backend/src/middleware/auth.middleware.js`) verifies the `Authorization: Bearer <accessToken>` header on every route under `/api/v1/users`. The `/api/v1/auth/*` routes below remain public by design — they are how you *obtain* a token. Send `Authorization: Bearer <accessToken>` on every `/api/v1/users` call.
+> **Breaking change — authentication moved from bearer tokens to httpOnly cookies.**
+> Tokens are no longer returned in the JSON body of `/register`, `/login`, or `/refresh`, and the `Authorization` header is no longer read by anything. The server sets `accessToken` and `refreshToken` as httpOnly cookies, and the browser sends them back automatically. Server-side session records are gone entirely. See [§13](#13-migrating-from-the-bearer-token-flow) for the full delta.
+
+- **Every request must be made with credentials.** Cookies are only attached cross-origin when the client opts in — `fetch(url, { credentials: "include" })`, or `axios.defaults.withCredentials = true`. Omit it and the browser silently sends no cookie, and every protected call fails with `401 Authentication required`.
+- **The frontend never sees a token.** Both cookies are `httpOnly`, so `document.cookie` cannot read them and there is nothing to persist in `localStorage`. Do not build token storage, token parsing, or an `Authorization` header interceptor — there is no token to put in one.
+- **`FRONTEND_URL` must be exact.** CORS runs as `cors({ origin: credential.frontendUrl, credentials: true })`. With `credentials: true` a wildcard origin is invalid, so the env var must name the frontend's exact scheme+host+port (e.g. `http://localhost:5173`). A mismatch shows up as a CORS error, not a 401.
+- **Authentication is fully stateless.** There is no `Session` collection any more. A refresh token is valid because its signature verifies and its user is still active — nothing is looked up or stored. The practical consequence is in [§10](#10-token-behavior-reference): **tokens cannot be revoked before they expire.**
+- **Refresh tokens are NOT rotated.** `POST /refresh` mints a new access token only. The refresh cookie is left exactly as it was and stays valid for its full `JWT_REFRESH_EXPIRES_IN` lifetime. (This is the reverse of the old behaviour, which rotated on every call.)
 - **Roles cannot be self-assigned.** `POST /register` ignores a `role` field in the body — Zod strips it and the account is created as `sales_rep`. This is deliberate: honouring a client-supplied role would let anyone hitting public signup mint an admin. Roles change only through `PATCH /api/v1/users/:id/role`, which is admin-only. See [§12](#12-roles-and-authorization).
 - **Authorization reads the database, not the token.** The access token carries a `role` claim, but `requireAuth` ignores it and loads the current user instead. A promotion, demotion, or deactivation therefore takes effect on the *next request* rather than after the ~15-minute token lifetime.
-- **Registration logs the user in.** `POST /register` returns the exact same payload as `POST /login` — `{ user, accessToken, refreshToken }` — and creates a server-side session. The frontend must **not** call `/login` after a successful `/register`; store the tokens and go straight to onboarding.
+- **Registration logs the user in.** `POST /register` returns the same `{ user }` payload as `POST /login` and sets the same two cookies. The frontend must **not** call `/login` after a successful `/register` — go straight to onboarding.
 - **There is no email verification.** No verification email is sent, there are no `/verify-email` or `/resend-verification` endpoints, and the `User` model has no `isEmailVerified` field. Register and login are the only two ways into the app.
-- **Refresh tokens are rotated on every use.** Each successful `POST /refresh` revokes the refresh token that was just used and returns a brand-new `accessToken`/`refreshToken` pair. The frontend must overwrite its stored `refreshToken` after every refresh call, or the next refresh will fail with 401.
-- **`POST /logout` logs out one session only** (the one tied to the `refreshToken` you send). There is no "log out of all devices" endpoint. A successful password reset does revoke all sessions for that user as a side effect of that specific flow.
 - All JSON responses share one envelope shape (see [§2](#2-standard-response-envelope)).
 
 ---
@@ -30,14 +35,16 @@ Base URL for every endpoint below:
 | Method | Path | Auth required | Purpose |
 |---|---|---|---|
 | POST | `/api/v1/auth/register` | No | Create a new user account **and sign them in** |
-| POST | `/api/v1/auth/login` | No | Authenticate and receive a token pair |
-| POST | `/api/v1/auth/refresh` | No (refresh token in body) | Rotate a refresh token for a new token pair |
-| POST | `/api/v1/auth/logout` | No (refresh token in body) | Revoke a single session |
+| POST | `/api/v1/auth/login` | No | Authenticate and receive auth cookies |
+| POST | `/api/v1/auth/refresh` | Refresh **cookie** | Mint a new access token |
+| POST | `/api/v1/auth/logout` | No | Clear both auth cookies |
 | POST | `/api/v1/auth/forgot-password` | No | Request a password-reset email |
 | POST | `/api/v1/auth/reset-password` | No (reset token in body) | Set a new password using a reset token |
-| GET | `/api/v1/users/me` | **Bearer** | The authenticated user's own profile |
-| GET | `/api/v1/users/:id` | **Bearer** — `admin`, `manager` | Read another user's profile |
-| PATCH | `/api/v1/users/:id/role` | **Bearer** — `admin` | Change a user's role |
+| GET | `/api/v1/users/me` | **Cookie** | The authenticated user's own profile |
+| GET | `/api/v1/users/:id` | **Cookie** — `admin`, `manager` | Read another user's profile |
+| PATCH | `/api/v1/users/:id/role` | **Cookie** — `admin` | Change a user's role |
+| — | `/api/v1/company/*` | **Cookie** — `admin` | See `company-api.md` |
+| — | `/api/v1/documents/*` | **Cookie** — `admin` | See `document-api.md` |
 
 ---
 
@@ -53,7 +60,7 @@ Base URL for every endpoint below:
 }
 ```
 
-`data` is `null` for endpoints that don't return a payload (logout, forgot-password, reset-password).
+`data` is `null` for endpoints that don't return a payload (refresh, logout, forgot-password, reset-password).
 
 ### Validation error (Zod) — HTTP 400
 
@@ -84,11 +91,44 @@ Status code is whatever the throwing code set as `error.statusCode`, defaulting 
 
 ---
 
-## 3. POST /api/v1/auth/register
+## 3. The auth cookies
+
+Both cookies are set by `backend/src/utils/cookie.js` and share one options object:
+
+| Option | Value | Why |
+|---|---|---|
+| `httpOnly` | `true` | Keeps tokens out of `document.cookie`, so XSS cannot read them |
+| `secure` | `true` in production, `false` otherwise | Driven by `NODE_ENV`, so cookies still work over plain `http` in local dev |
+| `sameSite` | `"lax"` | Top-level navigations from the frontend carry the cookie; cross-site POSTs do not |
+| `path` | `"/"` | Sent to every route under the API |
+
+| Cookie | Contents | `maxAge` |
+|---|---|---|
+| `accessToken` | Access JWT | `JWT_ACCESS_EXPIRES_IN` (e.g. `15m`) |
+| `refreshToken` | Refresh JWT | `JWT_REFRESH_EXPIRES_IN` (e.g. `7d`) |
+
+`maxAge` is derived from the same duration string that sets the JWT's own `exp`, parsed by `getDurationMs` in `backend/src/utils/date.js` — so the cookie and the token inside it can never expire at different times.
+
+A response that issues cookies looks like this on the wire:
+
+```http
+HTTP/1.1 200 OK
+Set-Cookie: accessToken=eyJhbGciOi...; Max-Age=900; Path=/; HttpOnly; SameSite=Lax
+Set-Cookie: refreshToken=eyJhbGciOi...; Max-Age=604800; Path=/; HttpOnly; SameSite=Lax
+Content-Type: application/json
+```
+
+### `sameSite: "lax"` and cross-site frontends
+
+`lax` means the cookie rides along on same-site requests and top-level navigations, but **not** on cross-site XHR/`fetch`. During local development the frontend (`localhost:5173`) and API (`localhost:3000`) differ only by port, which is still same-site, so this works. If the frontend is ever deployed on a genuinely different site than the API, these cookies will need `sameSite: "none"` plus `secure: true` — change it in `cookie.js`, not per-route.
+
+---
+
+## 4. POST /api/v1/auth/register
 
 ### Purpose
 
-Creates a new user account **and immediately issues a session for it**. Returns the same `{ user, accessToken, refreshToken }` payload as `/login`, so the client can move straight into onboarding without a second round trip. No email is sent.
+Creates a new user account **and immediately signs it in** by setting both auth cookies. Returns the same `{ user }` payload as `/login`, so the client can move straight into onboarding without a second round trip. No email is sent.
 
 ### Authentication
 
@@ -96,15 +136,10 @@ Required: No
 
 ### Request
 
-#### Headers
-
 ```http
+POST /api/v1/auth/register
 Content-Type: application/json
 ```
-
-`User-Agent` and the caller's IP are captured automatically by the server (`req.get("user-agent")`, `req.ip`) and stored with the session — the client does not send these explicitly.
-
-#### Body
 
 ```json
 {
@@ -124,9 +159,11 @@ Content-Type: application/json
 | `username` | string, trimmed, 3–30 chars, only letters/numbers/underscore (`^[a-zA-Z0-9_]+$`), lowercased before storage |
 | `password` | string, 8–128 chars (no complexity/character-class requirement beyond length) |
 
-There is no `companyName` field — company/tenant concepts from the architecture drafts are not implemented.
+There is no `companyName` field — the company profile is created separately through `POST /api/v1/company/onboarding` (see `company-api.md`).
 
 ### Successful Response — `201 Created`
+
+Sets `accessToken` and `refreshToken` cookies, plus:
 
 ```json
 {
@@ -140,18 +177,17 @@ There is no `companyName` field — company/tenant concepts from the architectur
       "username": "johndoe",
       "role": "sales_rep",
       "twoFactorEnabled": false,
-      "lastLoginAt": "2026-08-17T06:05:00.000Z",
-      "createdAt": "2026-08-17T06:05:00.000Z"
-    },
-    "accessToken": "eyJhbGciOi...",
-    "refreshToken": "eyJhbGciOi..."
+      "isActive": true,
+      "lastLoginAt": "2026-08-20T03:15:54.393Z",
+      "createdAt": "2026-08-20T03:15:54.362Z"
+    }
   }
 }
 ```
 
 `role` defaults to `"sales_rep"` for every new account (enum: `admin`, `manager`, `sales_rep`). There is no signup flow that produces an `admin` account.
 
-The `data` object is structurally identical to the one `/login` returns, so a single client-side `handleAuthSuccess(data)` can serve both entry points.
+`data` is structurally identical to what `/login` returns, so a single client-side `handleAuthSuccess(data.user)` can serve both entry points.
 
 ### Error Responses
 
@@ -162,17 +198,17 @@ The `data` object is structurally identical to the one `/login` returns, so a si
 | 409 | Username already taken | `"Username is already taken"` |
 | 500 | Unexpected server error | `"Internal server error"` (or the raw error message) |
 
-### Session side effect
+### Side effect
 
-Registration goes through the same `issueSession` helper as login: it creates a `Session` document (storing only the SHA-256 hash of the refresh token, plus `userAgent`, `ipAddress`, `expiresAt`) and sets `lastLoginAt`. The refresh token returned here is a first-class refresh token — it works with `/refresh` and `/logout` exactly like one obtained from `/login`.
+Registration goes through the same `issueTokens` helper as login: it signs both JWTs and sets `lastLoginAt`. Nothing is persisted beyond the user document itself — there is no session record.
 
 ---
 
-## 4. POST /api/v1/auth/login
+## 5. POST /api/v1/auth/login
 
 ### Purpose
 
-Authenticates an existing user with email + password and issues an access/refresh token pair. Also creates a server-side session record tied to the refresh token. This is the second of the two ways into the app — `/register` is the first, and both return the identical payload.
+Authenticates an existing user with email + password and sets both auth cookies. This is the second of the two ways into the app — `/register` is the first, and both return the identical payload.
 
 ### Authentication
 
@@ -180,15 +216,10 @@ Required: No
 
 ### Request
 
-#### Headers
-
 ```http
+POST /api/v1/auth/login
 Content-Type: application/json
 ```
-
-`User-Agent` and the caller's IP are captured automatically by the server (`req.get("user-agent")`, `req.ip`) and stored with the session — the client does not send these explicitly.
-
-#### Body
 
 ```json
 {
@@ -206,6 +237,8 @@ Content-Type: application/json
 
 ### Successful Response — `200 OK`
 
+Sets `accessToken` and `refreshToken` cookies, plus:
+
 ```json
 {
   "success": true,
@@ -218,11 +251,10 @@ Content-Type: application/json
       "username": "johndoe",
       "role": "sales_rep",
       "twoFactorEnabled": false,
-      "lastLoginAt": "2026-08-17T06:05:00.000Z",
-      "createdAt": "2026-08-17T06:05:00.000Z"
-    },
-    "accessToken": "eyJhbGciOi...",
-    "refreshToken": "eyJhbGciOi..."
+      "isActive": true,
+      "lastLoginAt": "2026-08-20T03:15:54.393Z",
+      "createdAt": "2026-08-20T03:15:54.362Z"
+    }
   }
 }
 ```
@@ -240,100 +272,103 @@ Content-Type: application/json
 
 ---
 
-## 5. POST /api/v1/auth/refresh
+## 6. POST /api/v1/auth/refresh
 
 ### Purpose
 
-Exchanges a valid, unrevoked, unexpired refresh token for a brand-new access/refresh token pair. This is a **rotation**: the old refresh token's session is revoked as part of a successful call, and a new session is created for the new refresh token.
+Mints a **new access token** from a still-valid refresh token and overwrites the `accessToken` cookie. The refresh token itself is untouched — not rotated, not revoked, not re-issued.
 
 ### Authentication
 
-Required: No (Bearer access token is not used here — the refresh token itself, in the body, is the credential)
+The `refreshToken` cookie is the credential. No body, no header.
 
 ### Request
 
-#### Headers
-
 ```http
-Content-Type: application/json
+POST /api/v1/auth/refresh
 ```
 
-#### Body
-
-```json
-{
-  "refreshToken": "eyJhbGciOi..."
-}
-```
-
-#### Validation rules (`refreshSchema`)
-
-| Field | Rules |
-|---|---|
-| `refreshToken` | string, required (min 1 char) |
+The request body is ignored entirely — `refreshSchema` was deleted along with the bearer flow. Send nothing.
 
 ### Successful Response — `200 OK`
+
+Sets a fresh `accessToken` cookie (the `refreshToken` cookie is left alone), plus:
 
 ```json
 {
   "success": true,
   "message": "Token refreshed successfully",
-  "data": {
-    "accessToken": "eyJhbGciOi...",
-    "refreshToken": "eyJhbGciOi..."
-  }
+  "data": null
 }
 ```
 
-Note: unlike `/login`, this response does **not** include a `user` object — only the new token pair.
+Note that `data` is `null` — no tokens and no `user` object come back. If the frontend needs the current user after refreshing, call `GET /api/v1/users/me`.
 
 ### Error Responses
 
 | Status | Condition | `message` |
 |---|---|---|
-| 400 | Body fails schema validation | `"Validation failed"` (+ `errors` array) |
-| 401 | No session matches the hash of the provided refresh token | `"Invalid refresh token"` |
-| 401 | Session was already revoked (already used once, or logged out) | `"Refresh token has been revoked"` |
-| 401 | Session's `expiresAt` is in the past | `"Refresh token has expired"` |
-| 401 | JWT signature invalid or token itself expired | `"Invalid refresh token"` |
-| 401 | Token's `type` claim isn't `"refresh"` | `"Invalid refresh token"` |
-| 401 | Token's `sub` doesn't match the session's user | `"Invalid refresh token"` |
+| 401 | No `refreshToken` cookie was sent | `"Refresh token is required"` |
+| 401 | JWT signature invalid, or the token has expired | `"Invalid or expired refresh token"` |
+| 401 | Token's `type` claim isn't `"refresh"`, or `sub` is missing | `"Invalid refresh token"` |
 | 401 | User no longer exists or `isActive === false` | `"Invalid refresh token"` |
 | 500 | Unexpected server error | — |
 
-The frontend should treat **any** 401 from this endpoint the same way: clear stored tokens and force the user back to login. Do not try to distinguish the specific messages for UX purposes — they exist for debugging/logging, not for conditional client logic.
+The frontend should treat **any** 401 from this endpoint the same way: send the user back to login. Do not try to distinguish the specific messages for UX purposes — they exist for debugging/logging, not for conditional client logic.
+
+### Recommended client pattern
+
+Because the access cookie expires silently, the natural pattern is a response interceptor: on a `401` from any protected endpoint, call `/refresh` once, then replay the original request. If `/refresh` also 401s, redirect to login.
+
+```js
+// axios example — withCredentials is what makes the cookies flow
+api.interceptors.response.use(null, async (error) => {
+  const original = error.config;
+
+  if (error.response?.status !== 401 || original._retried) {
+    return Promise.reject(error);
+  }
+
+  original._retried = true;   // refresh once per request, never loop
+
+  try {
+    await api.post("/auth/refresh");
+    return api(original);
+  } catch {
+    redirectToLogin();
+    return Promise.reject(error);
+  }
+});
+```
+
+Guard the retry with a flag as above. Without it, a `/refresh` that returns 401 re-enters the interceptor and loops.
 
 ---
 
-## 6. POST /api/v1/auth/logout
+## 7. POST /api/v1/auth/logout
 
 ### Purpose
 
-Revokes the single session associated with the given refresh token. This does not affect other sessions/devices for the same user, and it does not require (or check) an access token.
+Clears both auth cookies. That is the entire operation — with no server-side session there is nothing else to tear down.
 
 ### Authentication
 
-Required: No (refresh token in body acts as the credential)
+Required: No. Logout deliberately does not check anything, so a client holding stale or missing cookies can still clear itself.
 
 ### Request
 
-#### Headers
-
 ```http
-Content-Type: application/json
+POST /api/v1/auth/logout
 ```
 
-#### Body
-
-```json
-{
-  "refreshToken": "eyJhbGciOi..."
-}
-```
-
-Same shape/validation as `/refresh` (`refreshSchema` — `refreshToken` required, min 1 char).
+No body.
 
 ### Successful Response — `200 OK`
+
+```http
+Set-Cookie: accessToken=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax
+Set-Cookie: refreshToken=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax
+```
 
 ```json
 {
@@ -343,20 +378,13 @@ Same shape/validation as `/refresh` (`refreshSchema` — `refreshToken` required
 }
 ```
 
-### Error Responses
+This endpoint has no failure mode short of a 500 — it always succeeds.
 
-| Status | Condition | `message` |
-|---|---|---|
-| 400 | Body fails schema validation | `"Validation failed"` (+ `errors` array) |
-| 401 | No session matches the hash of the provided refresh token | `"Invalid refresh token"` |
-| 401 | Session already revoked | `"Refresh token has been revoked"` |
-| 500 | Unexpected server error | — |
-
-After a successful logout, the access token issued alongside that refresh token is **not** revoked — it remains cryptographically valid until it naturally expires (there is no access-token blacklist). Since no route currently checks access tokens at all, this has no practical effect today, but it matters once protected routes are added: the frontend should discard the access token client-side on logout and not rely on server-side invalidation of it.
+> **Logout is browser-local.** Clearing the cookie removes the credential from *this* browser, but the JWT it contained stays cryptographically valid until its own `exp`. Anyone who captured that token beforehand can keep using it. There is no token blacklist and no "log out of all devices" — see [§10](#10-token-behavior-reference).
 
 ---
 
-## 7. POST /api/v1/auth/forgot-password
+## 8. POST /api/v1/auth/forgot-password
 
 ### Purpose
 
@@ -368,13 +396,10 @@ Required: No
 
 ### Request
 
-#### Headers
-
 ```http
+POST /api/v1/auth/forgot-password
 Content-Type: application/json
 ```
-
-#### Body
 
 ```json
 {
@@ -418,11 +443,11 @@ There is intentionally no 404/"email not found" response — do not build UI tha
 
 ---
 
-## 8. POST /api/v1/auth/reset-password
+## 9. POST /api/v1/auth/reset-password
 
 ### Purpose
 
-Consumes a password-reset token to set a new password, then revokes **every** active session for that user (forces re-login on all devices).
+Consumes a password-reset token to set a new password, then clears the auth cookies **on the browser making the call**.
 
 ### Authentication
 
@@ -430,13 +455,10 @@ Required: No (reset token in body acts as the credential)
 
 ### Request
 
-#### Headers
-
 ```http
+POST /api/v1/auth/reset-password
 Content-Type: application/json
 ```
-
-#### Body
 
 ```json
 {
@@ -453,6 +475,8 @@ Content-Type: application/json
 | `password` | string, 8–128 chars (same rule object as registration's password) |
 
 ### Successful Response — `200 OK`
+
+Clears both auth cookies, plus:
 
 ```json
 {
@@ -473,54 +497,52 @@ Content-Type: application/json
 ### Behavior detail
 
 - The token is single-use: `PasswordResetToken.usedAt` is set on successful consumption; reusing it returns the same 400 above.
-- On success, `revokeAllUserSessions(userId)` is called — every refresh token/session for that user (all devices) is invalidated. Any access tokens already issued remain valid until their own expiry (no access-token blacklist exists), but since no route currently checks access tokens this has no practical effect yet.
+- **A password reset no longer signs the user out everywhere.** Under the old session model, `revokeAllUserSessions(userId)` killed every device. That function no longer exists. Tokens already issued to other browsers stay valid until they expire — up to `JWT_REFRESH_EXPIRES_IN`. This is the standard cost of stateless auth, and it means a password reset is **not** an effective response to a stolen token.
 
 ---
 
-## 9. Token Behavior Reference
+## 10. Token Behavior Reference
 
 | | Access Token | Refresh Token |
 |---|---|---|
 | Format | JWT, `HS256`, signed with `JWT_ACCESS_SECRET` | JWT, `HS256`, signed with `JWT_REFRESH_SECRET` |
-| Payload claims | `sub` (user id), `role`, `type: "access"`, `iat`, `exp` | `sub` (user id), `type: "refresh"`, `jti` (random UUID, guarantees uniqueness), `iat`, `exp` |
+| Payload claims | `sub` (user id), `role`, `type: "access"`, `iat`, `exp` | `sub` (user id), `type: "refresh"`, `iat`, `exp` |
 | Lifetime | `JWT_ACCESS_EXPIRES_IN` env var (e.g. `15m`) | `JWT_REFRESH_EXPIRES_IN` env var (e.g. `7d`) |
-| Server-side record | None — stateless, cannot be revoked before expiry | Yes — a `Session` document storing only the SHA-256 hash of the token (`refreshTokenHash`), plus `userAgent`, `ipAddress`, `expiresAt`, `revokedAt` |
-| Where returned | `/register` and `/login` (initial pair), `/refresh` (rotated pair) | Same as access token |
-| Where consumed | Nowhere yet — no route validates it (see [§0](#0-read-this-before-integrating)) | `/refresh` and `/logout`, in the JSON body as `refreshToken` |
-| Revocation | Not possible before natural expiry | Revoked (session `revokedAt` set) on: use via `/refresh` (rotation), `/logout`, and — for *all* of a user's sessions at once — a successful `/reset-password` |
+| Transport | `accessToken` httpOnly cookie | `refreshToken` httpOnly cookie |
+| Server-side record | None | None |
+| Where issued | `/register`, `/login`, `/refresh` | `/register`, `/login` only |
+| Where consumed | `requireAuth`, on every protected route | `/refresh` |
+| Rotation | Replaced on every `/refresh` | Never rotated |
+| Revocation | Not possible before natural expiry | Not possible before natural expiry |
 
-**Frontend integration guidance:**
-- Send `Authorization: Bearer <accessToken>` on requests once protected endpoints exist; there's nothing to attach it to today.
-- Persist the `refreshToken` (e.g. secure storage) and always overwrite it with the latest value returned by `/refresh` — the previous one becomes invalid the instant a new one is issued.
-- Any `401` from `/refresh` should be treated as "session is over" — clear local tokens and redirect to login.
+The two secrets must be **different values**. Distinct secrets plus the `type` claim are what stop a refresh token from being accepted as an access token: `requireAuth` verifies against `JWT_ACCESS_SECRET`, so a refresh token fails at the signature check before its `type` is even read.
+
+### Consequences of statelessness — read before shipping
+
+Deleting the session store removed the only revocation mechanism in the system. Concretely, today:
+
+- Logging out does **not** invalidate the token — it only removes the browser's copy.
+- Resetting a password does **not** sign other devices out.
+- Deactivating a user (`isActive: false`) or changing their role **does** take effect on the next request, because `requireAuth` and `refreshAccessToken` both re-read the user from MongoDB. This is the one live check that survives.
+- A leaked refresh token is usable until it expires, and the only remedy is rotating `JWT_REFRESH_SECRET`, which signs every user out at once.
+
+If real revocation is needed later, the usual minimal fix is a `tokenVersion` integer on the user document, embedded as a claim and compared on every verify — a single indexed read, without restoring a whole session collection.
 
 ---
 
-## 10. HTTP Status Code Summary
+## 11. HTTP Status Code Summary
 
 | Status | Meaning in this API |
 |---|---|
 | 200 | Successful request |
 | 201 | User created and signed in (`/register` only) |
 | 400 | Request failed Zod validation, **or** an invalid/expired/used/not-found token was supplied to `/reset-password` |
-| 401 | Login credentials invalid, account inactive path aside (see 403), or any refresh-token problem in `/refresh` / `/logout` |
-| 403 | `POST /login` against a user whose `isActive` is `false` |
+| 401 | Login credentials invalid, missing/invalid auth cookie, or any refresh-token problem in `/refresh` |
+| 403 | Account inactive, or authenticated but lacking the required role |
 | 409 | `POST /register` with an email or username already in use |
 | 500 | Unexpected server-side failure |
 
 Status codes not used anywhere in the current auth implementation despite appearing in the architecture drafts: `404`, `422`, `429`. There is no rate limiting implemented on any auth endpoint today.
-
----
-
-## 11. Things intentionally not implemented (do not build UI for these yet)
-
-- `GET /api/v1/auth/me` — does not exist under `/auth`. Use **`GET /api/v1/users/me`** instead ([§12](#12-roles-and-authorization)), which returns the current user from the access token alone.
-- Two-factor authentication (OTP setup/verify/disable) — model fields exist (`twoFactorEnabled`, `twoFactorSecret`) but no endpoint or login-time branch uses them.
-- Company/tenant registration (`companyName`, company creation, `companyId`) — not part of the `User` model or `/register` request.
-- Per-company / tenant isolation of role checks — `requireRole` gates on the global role only; there is no notion of "admin *of company X*" yet.
-- "Log out of all devices" endpoint — only single-session logout and the side-effect-of-password-reset case exist.
-- Email verification — removed deliberately. There is no `isEmailVerified` field, no verification token model, and no endpoint; do not build a "check your inbox" screen or a verification-pending state.
-- Account statuses beyond `isActive` (e.g. `SUSPENDED`, `PENDING_VERIFICATION`) — the model only has a boolean `isActive`.
 
 ---
 
@@ -534,17 +556,19 @@ Defined once in `backend/src/constants/roles.js`; the user-model enum, the role 
 |---|---|
 | `sales_rep` | Default for every new account |
 | `manager` | Can read other users' profiles |
-| `admin` | Can read profiles and grant roles |
+| `admin` | Can read profiles, grant roles, and manage the company profile and documents |
 
 ### How a role is granted
 
 `role` is **never** accepted from `POST /register`. Every account starts as `sales_rep`. To change one:
 
-```
+```http
 PATCH /api/v1/users/:id/role
-Authorization: Bearer <admin accessToken>
 Content-Type: application/json
+Cookie: accessToken=<admin's access token>
+```
 
+```json
 { "role": "manager" }
 ```
 
@@ -553,7 +577,7 @@ Rules enforced by this endpoint:
 - Caller must be authenticated (`401` otherwise) and must be an `admin` (`403` otherwise).
 - **An admin cannot change their own role** (`403`). This prevents the last admin from demoting themselves and locking role management out of the system.
 - `role` must be one of the three values above (`400` otherwise).
-- On a successful change, **all of the target's sessions are revoked** — their refresh tokens return `401 "Refresh token has been revoked"` and they must log in again.
+- The new role is in force on the target's **very next request** — `requireAuth` reads the role from the database, so the stale `role` claim in their existing access token is never used for authorization. (Under the old session model this endpoint also revoked their sessions and forced a re-login; it no longer does, and no longer needs to.)
 
 ### Bootstrapping the first admin
 
@@ -564,16 +588,42 @@ cd backend
 node scripts/promote-user.js user@example.com admin
 ```
 
-The change is live immediately — because `requireAuth` reads the role from the database, an access token issued *before* the promotion already authenticates as `admin`. No re-login needed.
+The change is live immediately — no re-login needed, for the same reason as above.
 
 ### Authorization failure responses
 
 | Situation | Status | `message` |
 |---|---|---|
-| No `Authorization` header, or not `Bearer <token>` | 401 | `Authentication required` |
+| No `accessToken` cookie sent | 401 | `Authentication required` |
 | Malformed, expired, or wrong-type token | 401 | `Invalid or expired access token` |
 | Token valid but the user no longer exists | 401 | `Invalid access token` |
 | User exists but `isActive: false` | 403 | `Account is inactive` |
 | Authenticated, but role not permitted | 403 | `You do not have permission to perform this action` |
 
 The 403 deliberately does not name the required role — that would leak the permission model.
+
+---
+
+## 13. Migrating from the bearer-token flow
+
+If you are updating a client written against the previous version of this document:
+
+| Then | Now |
+|---|---|
+| `data.accessToken` / `data.refreshToken` in the `/register` and `/login` response | Gone. `data` is `{ user }` only; tokens arrive as `Set-Cookie` |
+| Store tokens in `localStorage` | Store nothing. Delete the token storage layer |
+| `Authorization: Bearer <token>` request interceptor | Delete it. Set `withCredentials` / `credentials: "include"` instead |
+| `POST /refresh` with `{ refreshToken }` in the body | `POST /refresh` with no body |
+| `/refresh` returns a new token pair; overwrite the stored refresh token | `/refresh` returns `data: null`; nothing to store, and the refresh token does not change |
+| `POST /logout` with `{ refreshToken }` in the body | `POST /logout` with no body |
+| Password reset signs out all devices | Only clears the calling browser's cookies |
+| Role change forces the target to re-login | Takes effect on their next request; no re-login |
+
+Deleted from the backend, in case anything still imports them: `models/session.model.js`, `services/session.service.js`, `utils/token.js`, `refreshSchema` from `validator/auth.validator.js`, and `extractBearerToken` from `middleware/auth.middleware.js`.
+
+### Local development checklist
+
+1. `npm install` — `cookie-parser` and `cors` are new dependencies.
+2. Set `FRONTEND_URL` to the frontend's exact origin (e.g. `http://localhost:5173`).
+3. Set `NODE_ENV` — leave it unset or `development` locally so `secure` cookies don't break plain `http`.
+4. Turn on `withCredentials` in the frontend HTTP client.

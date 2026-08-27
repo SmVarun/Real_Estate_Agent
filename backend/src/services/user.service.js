@@ -48,6 +48,30 @@ const updateUserRole = async ({ actor, userId, role }) => {
   return toPublicUser(user);
 };
 
+/*
+ * Every user in the CRM — this is the "sales team" the assignment
+ * dropdown and the Salespeople page read from. There is no separate
+ * salesperson collection; a salesperson IS a user with a role.
+ *
+ * Public shape only, and no password or 2FA field can escape through
+ * it because toPublicUser whitelists what is returned.
+ */
+const listUsers = async ({ role, includeInactive = false } = {}) => {
+  const query = {};
+
+  if (role) {
+    query.role = role;
+  }
+
+  if (!includeInactive) {
+    query.isActive = true;
+  }
+
+  const users = await User.find(query).sort({ createdAt: -1 });
+
+  return users.map(toPublicUser);
+};
+
 const getUserById = async (userId) => {
   const user = await User.findById(userId);
 
@@ -58,4 +82,4 @@ const getUserById = async (userId) => {
   return toPublicUser(user);
 };
 
-export { updateUserRole, getUserById };
+export { updateUserRole, getUserById, listUsers };

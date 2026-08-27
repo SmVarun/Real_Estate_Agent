@@ -2,12 +2,15 @@ import React, { useMemo, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import {
   KeyRound, Mail, Lock, ArrowRight, Building2, TrendingUp, Users,
-  User, Phone, Eye, EyeOff, Check, X,
+  User, Phone, Eye, EyeOff, Check, X, AtSign, Loader2,
 } from "lucide-react";
 import { classNames } from "../utils/helpers.js";
+import { useAuth } from "../context/AuthContext.jsx";
+import { ApiError } from "../api/client.js";
 
 const EMPTY = {
   fullName: "",
+  username: "",
   email: "",
   phone: "",
   companyName: "",
@@ -15,6 +18,22 @@ const EMPTY = {
   confirmPassword: "",
   agreeTerms: false,
 };
+
+/*
+ * The backend requires a username and constrains it to
+ * [a-zA-Z0-9_]{3,30}. Rather than making someone invent one, offer a
+ * suggestion derived from their name — they can still edit it, and
+ * the field is validated on its own terms below.
+ */
+function suggestUsername(fullName) {
+  const slug = fullName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 30);
+
+  return slug.length >= 3 ? slug : "";
+}
 
 function getPasswordChecks(password) {
   return {
@@ -33,18 +52,43 @@ export default function Signup() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [passwordTouched, setPasswordTouched] = useState(false);
+  const [formError, setFormError] = useState(null);
+  const [usernameEdited, setUsernameEdited] = useState(false);
+  const { register } = useAuth();
 
   const passwordChecks = useMemo(() => getPasswordChecks(form.password), [form.password]);
   const passwordValid = Object.values(passwordChecks).every(Boolean);
 
   function set(key, value) {
-    setForm((f) => ({ ...f, [key]: value }));
+    setForm((f) => {
+      const next = { ...f, [key]: value };
+
+      /*
+       * Keep the suggestion in step with the name until the moment
+       * they type their own — after that it is theirs.
+       */
+      if (key === "fullName" && !usernameEdited) {
+        next.username = suggestUsername(value);
+      }
+
+      return next;
+    });
+
+    if (key === "username") {
+      setUsernameEdited(true);
+    }
+
     setErrors((e) => ({ ...e, [key]: undefined }));
+    setFormError(null);
   }
 
   function validate() {
     const e = {};
     if (!form.fullName.trim()) e.fullName = "Full name is required";
+
+    if (!form.username.trim()) e.username = "Username is required";
+    else if (!/^[a-zA-Z0-9_]{3,30}$/.test(form.username.trim()))
+      e.username = "3–30 characters, letters, numbers and underscores only";
 
     if (!form.email.trim()) e.email = "Email address is required";
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = "Enter a valid email address";
@@ -66,15 +110,64 @@ export default function Signup() {
     return Object.keys(e).length === 0;
   }
 
-  function handleSubmit(ev) {
+  async function handleSubmit(ev) {
     ev.preventDefault();
+
+    if (submitting) return;
+
+    setFormError(null);
+
     if (!validate()) return;
+
     setSubmitting(true);
-    // Frontend-only simulation — no backend/auth call yet.
-    setTimeout(() => {
+
+    try {
+      /*
+       * Only the four fields the backend's register schema accepts.
+       * Phone and company name are collected by this form but the
+       * user model has no field for either, so they are not sent —
+       * see the note under the submit button.
+       *
+       * Role is deliberately not sent: the backend strips it and
+       * every new account starts as sales_rep.
+       */
+      await register({
+        name: form.fullName.trim(),
+        username: form.username.trim().toLowerCase(),
+        email: form.email.trim().toLowerCase(),
+        password: form.password,
+      });
+
+      /*
+       * Registering signs the account in, so go straight to the app.
+       */
+      navigate("/dashboard", { replace: true });
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setFormError(error.message);
+
+        /*
+         * "Email is already registered" and "Username is already
+         * taken" are 409s with no field attached, so map them onto
+         * the field they are about.
+         */
+        if (error.fieldErrors) {
+          setErrors((current) => ({ ...current, ...error.fieldErrors }));
+        } else if (error.status === 409) {
+          const message = error.message.toLowerCase();
+
+          if (message.includes("username")) {
+            setErrors((current) => ({ ...current, username: error.message }));
+          } else if (message.includes("email")) {
+            setErrors((current) => ({ ...current, email: error.message }));
+          }
+        }
+      } else {
+        setFormError("Something went wrong. Please try again.");
+      }
+    } finally {
       setSubmitting(false);
-      navigate("/dashboard");
-    }, 1200);
+    }
   }
 
   const inputWrapClass = "relative";
@@ -160,6 +253,12 @@ export default function Signup() {
           <p className="mt-1.5 text-sm text-ink-400">Set up your real-estate AI sales workspace.</p>
 
           <form className="mt-8 space-y-4" onSubmit={handleSubmit} noValidate>
+            {formError && (
+              <div role="alert" className="rounded-lg border border-red-100 bg-red-50 px-3.5 py-2.5 text-sm text-red-600">
+                {formError}
+              </div>
+            )}
+
             <div>
               <label htmlFor="fullName" className={labelClass}>Full Name</label>
               <div className={inputWrapClass}>
@@ -194,6 +293,25 @@ export default function Signup() {
                 />
               </div>
               {errors.email && <p id="email-error" className="mt-1.5 text-xs text-red-500">{errors.email}</p>}
+            </div>
+
+            <div>
+              <label htmlFor="username" className={labelClass}>Username</label>
+              <div className={inputWrapClass}>
+                <AtSign size={16} className={iconClass} />
+                <input
+                  id="username"
+                  type="text"
+                  value={form.username}
+                  onChange={(e) => set("username", e.target.value)}
+                  className={inputClass(errors.username)}
+                  placeholder="Choose a username"
+                  autoComplete="username"
+                  aria-invalid={!!errors.username}
+                  aria-describedby={errors.username ? "username-error" : undefined}
+                />
+              </div>
+              {errors.username && <p id="username-error" className="mt-1.5 text-xs text-red-500">{errors.username}</p>}
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -321,7 +439,13 @@ export default function Signup() {
               disabled={submitting}
               className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-ink-800 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-ink-900 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {submitting ? "Creating Account…" : <>Create Account <ArrowRight size={15} /></>}
+              {submitting ? (
+                <>
+                  <Loader2 size={15} className="animate-spin" /> Creating Account…
+                </>
+              ) : (
+                <>Create Account <ArrowRight size={15} /></>
+              )}
             </button>
           </form>
 
@@ -333,7 +457,8 @@ export default function Signup() {
           </p>
 
           <p className="mt-4 text-center text-xs text-ink-300">
-            This is a frontend prototype — account creation is simulated and not yet connected to a backend.
+            Phone number and company name are collected for your records but are not
+            yet stored — the account API does not have fields for them.
           </p>
         </div>
       </div>

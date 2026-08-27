@@ -1,3 +1,7 @@
 node_modules
 dist
 .DS_Store
+
+# Local overrides — .env itself holds only the public API URL and is committed.
+.env.local
+.env.*.local

@@ -9,6 +9,7 @@ import {
 import s3Client from "../config/s3.js";
 import credential from "../config/config.js";
 import Document from "../models/document.model.js";
+import { deleteDocumentChunks } from "./chroma.service.js";
 
 const generateS3Key = (userId, originalName) => {
   const extension = path.extname(originalName);
@@ -113,18 +114,36 @@ export const deleteDocument = async (documentId) => {
     throw error;
   }
 
+  /*
+   * Vectors first.
+   *
+   * Removing the S3 object and the MongoDB record on their own would
+   * leave the embeddings behind, and retrieval would keep matching them
+   * — so the chat would answer from, and cite, a document that no
+   * longer exists. That is the one failure here a user would actually
+   * notice, so it is not allowed to be skipped.
+   *
+   * Chroma being unreachable is NOT fatal: refusing the delete would
+   * leave the file in place with no way to remove it. The orphaned
+   * vectors are logged instead, and the rest of the delete proceeds.
+   */
   try {
-    await s3Client.send(
-      new DeleteObjectCommand({
-        Bucket: document.s3Bucket,
-        Key: document.s3Key,
-      })
-    );
-
-    await Document.findByIdAndDelete(documentId);
-
-    return document;
+    await deleteDocumentChunks(document._id);
   } catch (error) {
-    throw error;
+    console.error(
+      `[DOCUMENT] failed to remove vectors for ${document._id}:`,
+      error.message
+    );
   }
+
+  await s3Client.send(
+    new DeleteObjectCommand({
+      Bucket: document.s3Bucket,
+      Key: document.s3Key,
+    })
+  );
+
+  await Document.findByIdAndDelete(documentId);
+
+  return document;
 };

@@ -1,24 +1,39 @@
 import React from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, Mail, Phone, Users, Flame, BadgeCheck, Trophy } from "lucide-react";
+import { ArrowLeft, Mail, AtSign, Users, Flame, BadgeCheck, Trophy } from "lucide-react";
 import Avatar from "../components/common/Avatar.jsx";
 import Badge from "../components/common/Badge.jsx";
 import StatusBadge from "../components/common/StatusBadge.jsx";
 import EmptyState from "../components/common/EmptyState.jsx";
 import Button from "../components/common/Button.jsx";
+import LoadingState from "../components/common/LoadingState.jsx";
 import { useCrm } from "../context/CrmContext.jsx";
 import { formatDate, timeAgo } from "../utils/helpers.js";
+import { roleLabel } from "../constants/index.js";
 
 export default function SalespersonDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { salespeople, leads, activity } = useCrm();
+  const { salespeople, leads, activity, loading } = useCrm();
   const sp = salespeople.find((s) => s.id === id);
+
+  /*
+   * "Not found" is only true once the roster has actually arrived —
+   * otherwise a refresh on this URL reports a missing person while the
+   * request is still in flight.
+   */
+  if (loading.salespeople) {
+    return (
+      <div className="animate-fadeIn rounded-2xl border border-ink-100 bg-white shadow-soft">
+        <LoadingState rows={4} />
+      </div>
+    );
+  }
 
   if (!sp) {
     return (
       <div className="py-20 text-center">
-        <p className="text-ink-500">Salesperson not found.</p>
+        <p className="text-ink-500">Team member not found.</p>
         <Button variant="secondary" className="mt-4" onClick={() => navigate("/salespeople")}>Back to Team</Button>
       </div>
     );
@@ -28,7 +43,16 @@ export default function SalespersonDetails() {
   const highly = spLeads.filter((l) => l.status === "HIGHLY_INTERESTED").length;
   const qualified = spLeads.filter((l) => l.status === "QUALIFIED").length;
   const converted = spLeads.filter((l) => l.status === "CONVERTED").length;
-  const relatedActivity = activity.filter((a) => a.text.includes(sp.name.split(" ")[0])).slice(0, 8);
+
+  /*
+   * Activity on this person's own leads. Matching on the id rather
+   * than on their name appearing in the text, which caught unrelated
+   * entries whenever two people shared a first name.
+   */
+  const assignedIds = new Set(spLeads.map((lead) => lead.id));
+  const relatedActivity = activity
+    .filter((entry) => assignedIds.has(entry.leadId))
+    .slice(0, 8);
 
   return (
     <div className="animate-fadeIn">
@@ -38,17 +62,19 @@ export default function SalespersonDetails() {
 
       <div className="mb-6 flex flex-col gap-5 rounded-2xl border border-ink-100 bg-white p-6 shadow-soft sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
-          <Avatar name={sp.name} color={sp.avatarColor} size={56} />
+          <Avatar name={sp.name} size={56} />
           <div>
             <h1 className="font-display text-xl font-semibold text-ink-900">{sp.name}</h1>
-            <p className="mt-1 text-sm text-ink-500">{sp.role}</p>
+            <p className="mt-1 text-sm text-ink-500">{roleLabel(sp.role)}</p>
             <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-ink-400">
               <span className="flex items-center gap-1"><Mail size={12} /> {sp.email}</span>
-              <span className="flex items-center gap-1"><Phone size={12} /> {sp.phone}</span>
+              <span className="flex items-center gap-1"><AtSign size={12} /> {sp.username}</span>
             </div>
           </div>
         </div>
-        <Badge tone={sp.status === "Active" ? "success" : "neutral"} dot>{sp.status}</Badge>
+        <Badge tone={sp.isActive ? "success" : "neutral"} dot>
+          {sp.isActive ? "Active" : "Inactive"}
+        </Badge>
       </div>
 
       <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -70,7 +96,7 @@ export default function SalespersonDetails() {
         <div className="lg:col-span-2">
           <h3 className="mb-3 font-display text-sm font-semibold text-ink-900">Assigned Leads</h3>
           {spLeads.length === 0 ? (
-            <EmptyState title="No leads assigned to this salesperson." />
+            <EmptyState title="No leads assigned" description="Leads assigned to this team member will appear here." />
           ) : (
             <div className="overflow-hidden rounded-2xl border border-ink-100 bg-white shadow-soft">
               <table className="w-full text-left text-sm">
@@ -106,13 +132,15 @@ export default function SalespersonDetails() {
           <h3 className="mb-3 font-display text-sm font-semibold text-ink-900">Recent Activity</h3>
           <div className="rounded-2xl border border-ink-100 bg-white p-5 shadow-soft">
             {relatedActivity.length === 0 ? (
-              <p className="text-sm text-ink-300">No recent activity for this salesperson.</p>
+              <p className="text-sm text-ink-300">No recent activity on this member's leads.</p>
             ) : (
               <div className="space-y-4">
-                {relatedActivity.map((a) => (
-                  <div key={a.id}>
-                    <p className="text-sm text-ink-700">{a.text}</p>
-                    <p className="mt-0.5 text-xs text-ink-300">{a.minutesAgo != null ? `${a.minutesAgo}m ago` : timeAgo(a.timestamp)}</p>
+                {relatedActivity.map((entry) => (
+                  <div key={entry.id}>
+                    <p className="text-sm text-ink-700">
+                      <span className="font-medium">{entry.leadName}</span> — {entry.text}
+                    </p>
+                    <p className="mt-0.5 text-xs text-ink-300">{timeAgo(entry.timestamp)}</p>
                   </div>
                 ))}
               </div>

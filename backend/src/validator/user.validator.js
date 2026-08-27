@@ -21,4 +21,18 @@ const userIdParamSchema = z.object({
   id: objectId,
 });
 
-export { updateRoleSchema, userIdParamSchema };
+/*
+ * Query params arrive as strings, so the boolean is coerced from
+ * the literal "true" rather than trusting JS truthiness — every
+ * non-empty string, "false" included, is truthy.
+ */
+const listUsersQuerySchema = z.object({
+  role: z.enum(ROLE_VALUES).optional(),
+
+  includeInactive: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((value) => value === "true"),
+});
+
+export { updateRoleSchema, userIdParamSchema, listUsersQuerySchema };

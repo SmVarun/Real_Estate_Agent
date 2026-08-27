@@ -9,22 +9,43 @@ import StatusBadge from "../components/common/StatusBadge.jsx";
 import Badge from "../components/common/Badge.jsx";
 import Button from "../components/common/Button.jsx";
 import AssignmentModal from "../components/leads/AssignmentModal.jsx";
+import LoadingState from "../components/common/LoadingState.jsx";
 import { useCrm } from "../context/CrmContext.jsx";
-import { STATUSES, STATUS_LABELS } from "../data/mockData.js";
+import { LEAD_STATUSES, LEAD_STATUS_LABELS } from "../constants/index.js";
 import { formatDateTime, timeAgo } from "../utils/helpers.js";
 
+/* Keys are the backend LEAD_ACTIVITY_TYPES values. */
 const ACT_ICONS = {
-  created: ClipboardList, message: MessageSquare, status: TrendingUp, assign: UserPlus, note: StickyNote,
+  created: ClipboardList,
+  updated: MessageSquare,
+  status: TrendingUp,
+  assign: UserPlus,
+  note: StickyNote,
 };
 
 export default function LeadDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { leads, salespeople, changeLeadStatus, addNoteToLead } = useCrm();
+  const { leads, changeLeadStatus, addNoteToLead, canAssign, loading } = useCrm();
   const [assignOpen, setAssignOpen] = useState(false);
   const [noteText, setNoteText] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
+  const [changingStatus, setChangingStatus] = useState(false);
 
   const lead = leads.find((l) => l.id === id);
+
+  /*
+   * Only conclude "not found" once the list has arrived — otherwise a
+   * refresh on this URL reports a missing lead mid-request.
+   */
+  if (loading.leads) {
+    return (
+      <div className="animate-fadeIn rounded-2xl border border-ink-100 bg-white shadow-soft">
+        <LoadingState rows={5} />
+      </div>
+    );
+  }
+
   if (!lead) {
     return (
       <div className="py-20 text-center">
@@ -34,7 +55,37 @@ export default function LeadDetails() {
     );
   }
 
-  const sp = salespeople.find((s) => s.id === lead.assignedTo);
+  /* Populated by the API layer, so no second lookup is needed. */
+  const assignee = lead.assignee;
+
+  async function handleStatusChange(status) {
+    setChangingStatus(true);
+
+    try {
+      await changeLeadStatus(lead.id, status);
+    } catch {
+      /* Already surfaced as a toast by the context. */
+    } finally {
+      setChangingStatus(false);
+    }
+  }
+
+  async function handleAddNote() {
+    const text = noteText.trim();
+
+    if (!text || savingNote) return;
+
+    setSavingNote(true);
+
+    try {
+      await addNoteToLead(lead.id, text);
+      setNoteText("");
+    } catch {
+      /* Already surfaced as a toast; the draft is kept so it is not lost. */
+    } finally {
+      setSavingNote(false);
+    }
+  }
 
   return (
     <div className="animate-fadeIn">
@@ -51,7 +102,13 @@ export default function LeadDetails() {
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
               <StatusBadge status={lead.status} />
               <span className="text-xs text-ink-400">
-                {sp ? <>Assigned to <span className="font-medium text-ink-600">{sp.name}</span></> : "Unassigned"}
+                {assignee ? (
+                  <>
+                    Assigned to <span className="font-medium text-ink-600">{assignee.name}</span>
+                  </>
+                ) : (
+                  "Unassigned"
+                )}
               </span>
             </div>
           </div>
@@ -59,14 +116,23 @@ export default function LeadDetails() {
         <div className="flex flex-wrap items-center gap-2">
           <select
             value={lead.status}
-            onChange={(e) => changeLeadStatus(lead.id, e.target.value)}
-            className="rounded-lg border border-ink-100 bg-white px-3.5 py-2.5 text-xs font-semibold text-ink-600 outline-none focus:border-brass-300 focus:ring-2 focus:ring-brass-100"
+            onChange={(e) => handleStatusChange(e.target.value)}
+            disabled={changingStatus}
+            className="rounded-lg border border-ink-100 bg-white px-3.5 py-2.5 text-xs font-semibold text-ink-600 outline-none focus:border-brass-300 focus:ring-2 focus:ring-brass-100 disabled:opacity-60"
           >
-            {STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+            {LEAD_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {LEAD_STATUS_LABELS[s]}
+              </option>
+            ))}
           </select>
-          <Button variant="brass" icon={UserRound} onClick={() => setAssignOpen(true)}>
-            {lead.assignedTo ? "Reassign" : "Assign Lead"}
-          </Button>
+
+          {/* Assignment is admin/manager only on the backend. */}
+          {canAssign && (
+            <Button variant="brass" icon={UserRound} onClick={() => setAssignOpen(true)}>
+              {lead.assignedTo ? "Reassign" : "Assign Lead"}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -91,10 +157,13 @@ export default function LeadDetails() {
             <div className="rounded-2xl border border-ink-100 bg-white p-5 shadow-soft">
               <h3 className="mb-4 font-display text-sm font-semibold text-ink-900">Property Interest</h3>
               <div className="space-y-3 text-sm">
-                <p className="flex items-center gap-2.5 text-ink-600"><Home size={14} className="text-ink-300" /> {lead.propertyInterest} · {lead.bhk}</p>
-                <p className="flex items-center gap-2.5 text-ink-600"><MapPin size={14} className="text-ink-300" /> {lead.location}</p>
-                <p className="flex items-center gap-2.5 text-ink-600"><Wallet size={14} className="text-ink-300" /> {lead.budget}</p>
-                <p className="flex items-center gap-2.5 text-ink-600"><Ruler size={14} className="text-ink-300" /> {lead.area}</p>
+                <p className="flex items-center gap-2.5 text-ink-600">
+                  <Home size={14} className="text-ink-300" />
+                  {[lead.propertyInterest, lead.bhk].filter(Boolean).join(" · ") || "—"}
+                </p>
+                <p className="flex items-center gap-2.5 text-ink-600"><MapPin size={14} className="text-ink-300" /> {lead.location || "—"}</p>
+                <p className="flex items-center gap-2.5 text-ink-600"><Wallet size={14} className="text-ink-300" /> {lead.budget || "—"}</p>
+                <p className="flex items-center gap-2.5 text-ink-600"><Ruler size={14} className="text-ink-300" /> {lead.area || "—"}</p>
               </div>
               {lead.requirements && <p className="mt-3 rounded-lg bg-ink-50/60 p-3 text-xs text-ink-500">{lead.requirements}</p>}
             </div>
@@ -120,15 +189,23 @@ export default function LeadDetails() {
               <input
                 value={noteText}
                 onChange={(e) => setNoteText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleAddNote();
+                  }
+                }}
+                disabled={savingNote}
                 placeholder="Add a note about this lead…"
-                className="flex-1 rounded-lg border border-ink-100 px-3.5 py-2.5 text-sm outline-none focus:border-brass-300 focus:ring-2 focus:ring-brass-100"
+                className="flex-1 rounded-lg border border-ink-100 px-3.5 py-2.5 text-sm outline-none focus:border-brass-300 focus:ring-2 focus:ring-brass-100 disabled:bg-ink-50"
               />
               <Button
                 variant="secondary"
                 icon={Plus}
-                onClick={() => { if (noteText.trim()) { addNoteToLead(lead.id, noteText.trim()); setNoteText(""); } }}
+                onClick={handleAddNote}
+                disabled={savingNote || !noteText.trim()}
               >
-                Add Note
+                {savingNote ? "Adding…" : "Add Note"}
               </Button>
             </div>
             <div className="space-y-3">

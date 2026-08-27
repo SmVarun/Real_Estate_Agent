@@ -1,17 +1,28 @@
 import React from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid } from "recharts";
-import { STATUSES, STATUS_LABELS, STATUS_COLOR_KEY } from "../../data/mockData.js";
+import { LEAD_STATUSES, LEAD_STATUS_LABELS } from "../../constants/index.js";
 
-const HEX = {
-  new: "#64748B", contacted: "#3B82F6", interested: "#8B5CF6", highly: "#B08D57",
-  qualified: "#0D9488", converted: "#16A34A", notinterested: "#94A3B8", lost: "#DC2626",
+/*
+ * Local to the charts: these are presentation, not data. The status
+ * values themselves come from the shared constants module, which
+ * mirrors the backend enum.
+ */
+const STATUS_HEX = {
+  NEW: "#64748B",
+  CONTACTED: "#3B82F6",
+  INTERESTED: "#8B5CF6",
+  HIGHLY_INTERESTED: "#B08D57",
+  QUALIFIED: "#0D9488",
+  CONVERTED: "#16A34A",
+  NOT_INTERESTED: "#94A3B8",
+  LOST: "#DC2626",
 };
 
 export default function LeadStatusChart({ leads }) {
-  const data = STATUSES.map((s) => ({
-    status: STATUS_LABELS[s],
-    count: leads.filter((l) => l.status === s).length,
-    color: HEX[STATUS_COLOR_KEY[s]],
+  const data = LEAD_STATUSES.map((status) => ({
+    status: LEAD_STATUS_LABELS[status],
+    count: leads.filter((lead) => lead.status === status).length,
+    color: STATUS_HEX[status],
   }));
 
   return (

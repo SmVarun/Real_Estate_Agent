@@ -5,7 +5,12 @@ const collectionName =
 
 let collection;
 
-const getCollection = async () => {
+/*
+ * Exported so the retrieval side (rag-retrieval.service.js) reads the
+ * SAME collection handle the ingestion side writes to — one client,
+ * one collection name, no second source of truth.
+ */
+export const getCollection = async () => {
   if (!collection) {
     // embeddingFunction: null is required. Without it the client tries to
     // instantiate DefaultEmbeddingFunction (a separate @chroma-core/default-embed
@@ -65,4 +70,32 @@ export const addDocumentChunks = async ({
     documentId,
     chunksStored: chunks.length,
   };
+};
+
+/*
+ * Remove every chunk belonging to one document.
+ *
+ * Deleting a document from MongoDB and S3 is not enough on its own: the
+ * vectors outlive it, so retrieval keeps matching them and the chat
+ * answers — and cites — a file that no longer exists. This closes that
+ * gap.
+ *
+ * Matched on the documentId metadata rather than reconstructing the
+ * `${documentId}-${index}` ids, so it stays correct no matter how many
+ * chunks were written.
+ */
+export const deleteDocumentChunks = async (documentId) => {
+  if (!documentId) {
+    const error = new Error("documentId is required");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const collection = await getCollection();
+
+  await collection.delete({
+    where: { documentId: documentId.toString() },
+  });
+
+  return { documentId };
 };

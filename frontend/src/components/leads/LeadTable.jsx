@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import { MoreHorizontal, Pencil, UserPlus, Trash2, Mail, Phone } from "lucide-react";
+import { MoreHorizontal, Pencil, UserPlus, Trash2, Phone } from "lucide-react";
 import Avatar from "../common/Avatar.jsx";
 import StatusBadge from "../common/StatusBadge.jsx";
 import Badge from "../common/Badge.jsx";
@@ -11,11 +11,23 @@ import { timeAgo, formatDate } from "../../utils/helpers.js";
 import { Users } from "lucide-react";
 
 export default function LeadTable({ leads, onEdit, onAssign, onAddLead }) {
-  const { salespeople, deleteLead } = useCrm();
+  const { deleteLead, canAssign } = useCrm();
   const [menuFor, setMenuFor] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
-  const spMap = Object.fromEntries(salespeople.map((s) => [s.id, s]));
+  async function handleDelete() {
+    setDeleting(true);
+
+    try {
+      await deleteLead(confirmDelete.id);
+      setConfirmDelete(null);
+    } catch {
+      /* The context has already surfaced this as a toast. */
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   if (leads.length === 0) {
     return (
@@ -48,7 +60,7 @@ export default function LeadTable({ leads, onEdit, onAssign, onAddLead }) {
           </thead>
           <tbody className="divide-y divide-ink-50">
             {leads.map((lead) => {
-              const sp = spMap[lead.assignedTo];
+              const assignee = lead.assignee;
               return (
                 <tr key={lead.id} className="group text-sm transition-colors hover:bg-ink-50/40">
                   <td className="px-5 py-3.5">
@@ -71,18 +83,20 @@ export default function LeadTable({ leads, onEdit, onAssign, onAddLead }) {
                   </td>
                   <td className="px-4 py-3.5 text-ink-500">{lead.source}</td>
                   <td className="px-4 py-3.5">
-                    {sp ? (
+                    {assignee ? (
                       <div className="flex items-center gap-2">
-                        <Avatar name={sp.name} color={sp.avatarColor} size={24} />
-                        <span className="text-ink-600">{sp.name}</span>
+                        <Avatar name={assignee.name} size={24} />
+                        <span className="text-ink-600">{assignee.name}</span>
                       </div>
-                    ) : (
+                    ) : canAssign ? (
                       <button
                         onClick={() => onAssign(lead)}
                         className="rounded-full border border-dashed border-ink-200 px-2.5 py-1 text-xs font-medium text-ink-400 hover:border-brass-300 hover:text-brass-600"
                       >
                         Unassigned
                       </button>
+                    ) : (
+                      <span className="text-xs text-ink-400">Unassigned</span>
                     )}
                   </td>
                   <td className="px-4 py-3.5"><StatusBadge status={lead.status} size="sm" /></td>
@@ -105,18 +119,22 @@ export default function LeadTable({ leads, onEdit, onAssign, onAddLead }) {
                           >
                             <Pencil size={14} /> Edit Lead
                           </button>
-                          <button
-                            onClick={() => { onAssign(lead); setMenuFor(null); }}
-                            className="flex w-full items-center gap-2 px-3.5 py-2 text-sm text-ink-600 hover:bg-ink-50"
-                          >
-                            <UserPlus size={14} /> {lead.assignedTo ? "Reassign" : "Assign"}
-                          </button>
-                          <button
-                            onClick={() => { setConfirmDelete(lead); setMenuFor(null); }}
-                            className="flex w-full items-center gap-2 px-3.5 py-2 text-sm text-red-500 hover:bg-red-50"
-                          >
-                            <Trash2 size={14} /> Delete Lead
-                          </button>
+                          {canAssign && (
+                            <>
+                              <button
+                                onClick={() => { onAssign(lead); setMenuFor(null); }}
+                                className="flex w-full items-center gap-2 px-3.5 py-2 text-sm text-ink-600 hover:bg-ink-50"
+                              >
+                                <UserPlus size={14} /> {lead.assignedTo ? "Reassign" : "Assign"}
+                              </button>
+                              <button
+                                onClick={() => { setConfirmDelete(lead); setMenuFor(null); }}
+                                className="flex w-full items-center gap-2 px-3.5 py-2 text-sm text-red-500 hover:bg-red-50"
+                              >
+                                <Trash2 size={14} /> Delete Lead
+                              </button>
+                            </>
+                          )}
                         </div>
                       </>
                     )}
@@ -131,9 +149,9 @@ export default function LeadTable({ leads, onEdit, onAssign, onAddLead }) {
         open={!!confirmDelete}
         title="Delete this lead?"
         message={confirmDelete ? `${confirmDelete.name} and all associated activity will be permanently removed.` : ""}
-        confirmLabel="Delete"
+        confirmLabel={deleting ? "Deleting…" : "Delete"}
         onCancel={() => setConfirmDelete(null)}
-        onConfirm={() => { deleteLead(confirmDelete.id); setConfirmDelete(null); }}
+        onConfirm={handleDelete}
       />
     </div>
   );

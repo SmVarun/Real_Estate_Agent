@@ -8,12 +8,16 @@ const test = async () => {
   try {
     await connectDatabase();
 
-    const document = await Document.findOne({
-      ingestionStatus: "PENDING",
-    });
+    /*
+     * Any stored document will do. This script only proves S3 download +
+     * extraction + chunking still work; it deliberately does not filter on
+     * ingestionStatus, which is owned by document-ingestion.service.js and
+     * no longer leaves documents sitting at PENDING.
+     */
+    const document = await Document.findOne().sort({ createdAt: -1 });
 
     if (!document) {
-      throw new Error("No pending document found");
+      throw new Error("No document found");
     }
 
     console.log("Document:", document.originalName);

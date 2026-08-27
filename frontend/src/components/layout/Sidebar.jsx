@@ -2,21 +2,37 @@ import React from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   LayoutGrid, Users, UserRound, MessagesSquare, Building2, Settings,
-  ChevronsLeft, ChevronsRight, LogOut, KeyRound,
+  ChevronsLeft, ChevronsRight, LogOut, KeyRound, Library,
 } from "lucide-react";
 import Avatar from "../common/Avatar.jsx";
+import { useAuth } from "../../context/AuthContext.jsx";
+import { roleLabel, isAdmin } from "../../constants/index.js";
 
+/*
+ * `adminOnly` mirrors the backend's own guard on those routes — a
+ * manager or rep would only get a 403 from every request the page
+ * makes, so the entry is not shown to them.
+ */
 const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutGrid },
   { to: "/leads", label: "Leads", icon: Users },
   { to: "/salespeople", label: "Salespeople", icon: UserRound },
-  { to: "/chat", label: "Chat", icon: MessagesSquare },
-  { to: "/company", label: "Company", icon: Building2 },
+  { to: "/chat", label: "AI Assistant", icon: MessagesSquare },
+  { to: "/knowledge-base", label: "Knowledge Base", icon: Library, adminOnly: true },
+  { to: "/company", label: "Company", icon: Building2, adminOnly: true },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 
 export default function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobileOpen }) {
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
+
+  const navItems = NAV.filter((item) => !item.adminOnly || isAdmin(user));
+
+  async function handleLogout() {
+    await logout();
+    navigate("/login", { replace: true });
+  }
 
   return (
     <>
@@ -43,7 +59,7 @@ export default function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobile
 
         {/* Nav */}
         <nav className="flex-1 space-y-1 px-3 py-2">
-          {NAV.map(({ to, label, icon: Icon }) => (
+          {navItems.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
@@ -71,16 +87,16 @@ export default function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobile
 
         {/* User */}
         <div className={`flex items-center gap-3 border-t border-ink-100 px-4 py-4 ${collapsed ? "justify-center px-0" : ""}`}>
-          <Avatar name="Vikram Shetty" color="#2A3C60" size={36} />
+          <Avatar name={user?.name || ""} color="#2A3C60" size={36} />
           {!collapsed && (
             <div className="flex-1 min-w-0 leading-tight">
-              <p className="truncate text-sm font-semibold text-ink-800">Vikram Shetty</p>
-              <p className="truncate text-xs text-ink-400">Administrator</p>
+              <p className="truncate text-sm font-semibold text-ink-800">{user?.name}</p>
+              <p className="truncate text-xs text-ink-400">{roleLabel(user?.role)}</p>
             </div>
           )}
           {!collapsed && (
             <button
-              onClick={() => navigate("/login")}
+              onClick={handleLogout}
               className="rounded-lg p-1.5 text-ink-400 hover:bg-ink-50 hover:text-red-500"
               title="Logout"
             >

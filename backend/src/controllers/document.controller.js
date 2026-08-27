@@ -5,6 +5,8 @@ import {
   deleteDocument,
 } from "../services/document.service.js";
 
+import { ingestDocument } from "../services/document-ingestion.service.js";
+
 // for the creation of the document 
 
 export const uploadDocumentHandler = async (req, res, next) => {
@@ -14,9 +16,28 @@ export const uploadDocumentHandler = async (req, res, next) => {
       userId: req.user.id,
     });
 
+    /*
+     * Fired without awaiting: a single document can be dozens of
+     * sequential Hugging Face embedding calls, and holding the upload
+     * request open for that long would time out the client. The record
+     * is returned as PENDING and the caller polls GET /documents/:id
+     * for PROCESSING -> COMPLETED | FAILED.
+     *
+     * This is not a queue or a worker — it is the same process, and the
+     * ingestion service still owns the status lifecycle. The catch only
+     * exists because there is no response left to surface the error on;
+     * ingestDocument has already recorded FAILED by the time it runs.
+     */
+    ingestDocument(document._id).catch((error) => {
+      console.error(
+        `[INGEST] background ingestion failed for ${document._id}:`,
+        error.message
+      );
+    });
+
     return res.status(201).json({
       success: true,
-      message: "Document uploaded successfully",
+      message: "Document uploaded successfully. Ingestion has started.",
       data: document,
     });
   } catch (error) {

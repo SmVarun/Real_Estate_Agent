@@ -7,9 +7,10 @@ import EmptyState from "../common/EmptyState.jsx";
 import { useCrm } from "../../context/CrmContext.jsx";
 
 export default function AttentionLeads({ leads, onAssign }) {
-  const { salespeople } = useCrm();
-  const spMap = Object.fromEntries(salespeople.map((s) => [s.id, s]));
-  const highly = leads.filter((l) => l.status === "HIGHLY_INTERESTED").slice(0, 5);
+  const { canAssign } = useCrm();
+  const highly = leads
+    .filter((lead) => lead.status === "HIGHLY_INTERESTED")
+    .slice(0, 5);
 
   return (
     <div className="rounded-2xl border border-brass-200/70 bg-gradient-to-br from-brass-50/60 to-white p-5 shadow-soft">
@@ -28,20 +29,30 @@ export default function AttentionLeads({ leads, onAssign }) {
       ) : (
         <div className="space-y-2.5">
           {highly.map((lead) => {
-            const sp = spMap[lead.assignedTo];
+            const assignee = lead.assignee;
             return (
               <div key={lead.id} className="flex items-center justify-between gap-3 rounded-xl border border-ink-100 bg-white px-4 py-3">
                 <Link to={`/leads/${lead.id}`} className="flex min-w-0 items-center gap-3">
                   <Avatar name={lead.name} size={34} />
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-ink-800">{lead.name}</p>
-                    <p className="truncate text-xs text-ink-400">{lead.propertyInterest} · {lead.location} · {lead.budget}</p>
+                    <p className="truncate text-xs text-ink-400">
+                      {[lead.propertyInterest, lead.location, lead.budget]
+                        .filter(Boolean)
+                        .join(" · ") || "No details captured"}
+                    </p>
                   </div>
                 </Link>
-                {sp ? (
-                  <span className="shrink-0 text-xs font-medium text-ink-500">Assigned to {sp.name.split(" ")[0]}</span>
+                {assignee ? (
+                  <span className="shrink-0 text-xs font-medium text-ink-500">
+                    Assigned to {assignee.name.split(" ")[0]}
+                  </span>
+                ) : canAssign ? (
+                  <Button variant="brass" size="sm" className="shrink-0" onClick={() => onAssign(lead)}>
+                    Assign
+                  </Button>
                 ) : (
-                  <Button variant="brass" size="sm" className="shrink-0" onClick={() => onAssign(lead)}>Assign</Button>
+                  <span className="shrink-0 text-xs text-ink-400">Unassigned</span>
                 )}
               </div>
             );

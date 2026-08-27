@@ -1,6 +1,10 @@
 import React from "react";
 import { Search, X } from "lucide-react";
-import { STATUSES, STATUS_LABELS, SOURCES } from "../../data/mockData.js";
+import {
+  LEAD_STATUSES,
+  LEAD_STATUS_LABELS,
+  LEAD_SOURCES,
+} from "../../constants/index.js";
 import { useCrm } from "../../context/CrmContext.jsx";
 
 export default function LeadFilters({ filters, setFilters }) {
@@ -30,11 +34,11 @@ export default function LeadFilters({ filters, setFilters }) {
       <div className="flex flex-wrap items-center gap-2">
         <select className={selectClass} value={filters.status} onChange={(e) => update("status", e.target.value)}>
           <option value="ALL">All Statuses</option>
-          {STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+          {LEAD_STATUSES.map((s) => <option key={s} value={s}>{LEAD_STATUS_LABELS[s]}</option>)}
         </select>
         <select className={selectClass} value={filters.source} onChange={(e) => update("source", e.target.value)}>
           <option value="ALL">All Sources</option>
-          {SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}
+          {LEAD_SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
         <select className={selectClass} value={filters.assignedTo} onChange={(e) => update("assignedTo", e.target.value)}>
           <option value="ALL">All Salespeople</option>

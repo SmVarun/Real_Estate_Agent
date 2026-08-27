@@ -1,9 +1,14 @@
 import {
   updateRoleSchema,
   userIdParamSchema,
+  listUsersQuerySchema,
 } from "../validator/user.validator.js";
 
-import { updateUserRole, getUserById } from "../services/user.service.js";
+import {
+  updateUserRole,
+  getUserById,
+  listUsers,
+} from "../services/user.service.js";
 import { toPublicUser } from "../utils/user.js";
 
 /*
@@ -20,6 +25,27 @@ const getMe = async (req, res, next) => {
       data: {
         user: toPublicUser(req.user),
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/*
+ * The team roster. Every authenticated user may read it — a rep
+ * needs to see who a lead is assigned to, and the shape is the same
+ * public one /me returns.
+ */
+const listUsersHandler = async (req, res, next) => {
+  try {
+    const { role, includeInactive } = listUsersQuerySchema.parse(req.query);
+
+    const users = await listUsers({ role, includeInactive });
+
+    return res.status(200).json({
+      success: true,
+      message: "Users retrieved successfully",
+      data: { users },
     });
   } catch (error) {
     next(error);
@@ -67,4 +93,4 @@ const updateRole = async (req, res, next) => {
   }
 };
 
-export { getMe, getUser, updateRole };
+export { getMe, listUsersHandler, getUser, updateRole };

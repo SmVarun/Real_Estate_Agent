@@ -1,7 +1,11 @@
 import React, { useState } from "react";
 import Drawer from "../common/Drawer.jsx";
 import Button from "../common/Button.jsx";
-import { STATUSES, STATUS_LABELS, SOURCES } from "../../data/mockData.js";
+import {
+  LEAD_STATUSES,
+  LEAD_STATUS_LABELS,
+  LEAD_SOURCES,
+} from "../../constants/index.js";
 import { useCrm } from "../../context/CrmContext.jsx";
 
 const EMPTY = {
@@ -12,22 +16,31 @@ const EMPTY = {
   budget: "",
   location: "",
   bhk: "",
-  interestLevel: "INTERESTED",
+  area: "",
+  requirements: "",
   source: "Website",
   assignedTo: "",
   status: "NEW",
-  notesText: "",
 };
 
 export default function LeadForm({ open, onClose, existingLead }) {
-  const { addLead, updateLead, salespeople } = useCrm();
+  const { addLead, updateLead, salespeople, canAssign } = useCrm();
   const [form, setForm] = useState(EMPTY);
   const [errors, setErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
+
+  /* Only an active user can be assigned - the backend rejects the rest. */
+  const assignableUsers = salespeople.filter((person) => person.isActive);
 
   React.useEffect(() => {
     if (open) {
-      setForm(existingLead ? { ...EMPTY, ...existingLead, notesText: "" } : EMPTY);
+      setForm(
+        existingLead
+          ? { ...EMPTY, ...existingLead, assignedTo: existingLead.assignedTo || "" }
+          : EMPTY
+      );
       setErrors({});
+      setSubmitting(false);
     }
   }, [open, existingLead]);
 
@@ -44,29 +57,61 @@ export default function LeadForm({ open, onClose, existingLead }) {
     return Object.keys(e).length === 0;
   }
 
-  function handleSubmit(ev) {
+  async function handleSubmit(ev) {
     ev.preventDefault();
+
+    if (submitting) return;
     if (!validate()) return;
+
+    /*
+     * Optional fields go as "" rather than a placeholder like
+     * "Not specified" - an empty field means the information was not
+     * captured, and filler would make it look as though it was.
+     */
     const payload = {
-      name: form.name,
-      email: form.email,
-      phone: form.phone,
-      propertyInterest: form.propertyInterest || "Apartment",
-      budget: form.budget || "Not specified",
-      location: form.location || "Not specified",
-      bhk: form.bhk || "—",
-      area: form.area || "—",
-      requirements: form.requirements || "",
+      name: form.name.trim(),
+      email: form.email.trim(),
+      phone: form.phone.trim(),
+      propertyInterest: form.propertyInterest.trim(),
+      budget: form.budget.trim(),
+      location: form.location.trim(),
+      bhk: form.bhk.trim(),
+      area: form.area.trim(),
+      requirements: form.requirements.trim(),
       source: form.source,
-      assignedTo: form.assignedTo || null,
       status: form.status,
     };
-    if (existingLead) {
-      updateLead(existingLead.id, payload);
-    } else {
-      addLead(payload);
+
+    /*
+     * Assignment is admin/manager-only on the backend, so a rep form
+     * must not send the field at all.
+     */
+    if (canAssign) {
+      payload.assignedTo = form.assignedTo || null;
     }
-    onClose();
+
+    setSubmitting(true);
+
+    try {
+      if (existingLead) {
+        await updateLead(existingLead.id, payload);
+      } else {
+        await addLead(payload);
+      }
+
+      onClose();
+    } catch (error) {
+      /*
+       * Field-level messages from the backend validator land on the
+       * inputs they belong to; the context has already shown the
+       * summary as a toast.
+       */
+      if (error?.fieldErrors) {
+        setErrors(error.fieldErrors);
+      }
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   const inputClass =
@@ -81,8 +126,14 @@ export default function LeadForm({ open, onClose, existingLead }) {
       subtitle={existingLead ? "Update opportunity details" : "Create a new sales opportunity"}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button variant="brass" onClick={handleSubmit}>{existingLead ? "Save Changes" : "Add Lead"}</Button>
+          <Button variant="secondary" onClick={onClose} disabled={submitting}>Cancel</Button>
+          <Button variant="brass" onClick={handleSubmit} disabled={submitting}>
+            {submitting
+              ? "Saving…"
+              : existingLead
+              ? "Save Changes"
+              : "Add Lead"}
+          </Button>
         </>
       }
     >
@@ -122,32 +173,54 @@ export default function LeadForm({ open, onClose, existingLead }) {
           <div>
             <label className={labelClass}>Lead Source</label>
             <select className={inputClass} value={form.source} onChange={(e) => set("source", e.target.value)}>
-              {SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}
+              {LEAD_SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={labelClass}>Assigned Salesperson</label>
-            <select className={inputClass} value={form.assignedTo || ""} onChange={(e) => set("assignedTo", e.target.value)}>
+            <select
+              className={inputClass}
+              value={form.assignedTo || ""}
+              onChange={(e) => set("assignedTo", e.target.value)}
+              disabled={!canAssign}
+              title={canAssign ? undefined : "Only administrators and managers can assign leads"}
+            >
               <option value="">Unassigned</option>
-              {salespeople.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              {assignableUsers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
           <div>
             <label className={labelClass}>Status</label>
             <select className={inputClass} value={form.status} onChange={(e) => set("status", e.target.value)}>
-              {STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+              {LEAD_STATUSES.map((s) => <option key={s} value={s}>{LEAD_STATUS_LABELS[s]}</option>)}
             </select>
           </div>
         </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={labelClass}>Configuration</label>
+            <input className={inputClass} value={form.bhk} onChange={(e) => set("bhk", e.target.value)} placeholder="e.g. 3 BHK" />
+          </div>
+          <div>
+            <label className={labelClass}>Area</label>
+            <input className={inputClass} value={form.area} onChange={(e) => set("area", e.target.value)} placeholder="e.g. 1450 sq.ft." />
+          </div>
+        </div>
+
+        {/*
+          Notes are added from the lead page - the API attaches them to
+          an existing lead, so there is nothing to attach one to until
+          this form has been saved.
+        */}
         <div>
-          <label className={labelClass}>Notes</label>
+          <label className={labelClass}>Requirements</label>
           <textarea
             className={inputClass}
             rows={3}
-            value={form.notesText}
-            onChange={(e) => set("notesText", e.target.value)}
+            value={form.requirements}
+            onChange={(e) => set("requirements", e.target.value)}
             placeholder="Any additional context about this lead…"
           />
         </div>

@@ -41,6 +41,7 @@ Base URL for every endpoint below:
 | POST | `/api/v1/auth/forgot-password` | No | Request a password-reset email |
 | POST | `/api/v1/auth/reset-password` | No (reset token in body) | Set a new password using a reset token |
 | GET | `/api/v1/users/me` | **Cookie** | The authenticated user's own profile |
+| GET | `/api/v1/users` | **Cookie** | The team roster — every user, in the same public shape |
 | GET | `/api/v1/users/:id` | **Cookie** — `admin`, `manager` | Read another user's profile |
 | PATCH | `/api/v1/users/:id/role` | **Cookie** — `admin` | Change a user's role |
 | — | `/api/v1/company/*` | **Cookie** — `admin` | See `company-api.md` |
